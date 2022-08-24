@@ -105,24 +105,33 @@ error_detect_depends() {
 
 # Pre-installation settings
 pre_install_docker_compose() {
-    read -p "Nhập Link Web :" domain
-    echo -e "Link Web là : ${domain}"
+  echo -e "[1] vuthaiazz.xyz"
+  echo -e "[2] vuthaiazz.xyz"
+  read -p "Web đang sử dụng:" api_host
+  if [ "$api_host" == "1" ]; then
+    api_host="https://vuthaiazz.xyz"
+  elif [ "$api_host" == "2" ]; then
+    api_host="https://vuthaiazz.xyz"
+  else 
+    api_host="https://vuthaiazz.xyz"
+  fi
 
-    read -p "Nhập Api Key :" APIKEY
-    echo -e "API KEY là : ${APIKEY}"
+  echo "--------------------------------"
+  echo "Bạn đã chọn ${api_host}"
+  echo "--------------------------------"
 
-    read -p "Nhập Node ID port 80 :" node_80
-    echo -e "Node_80 là : ${node_80}"
+  read -p " ID nút (Node_ID):" node_id
+  [ -z "${node_id}" ] && node_id=0
+  echo "-------------------------------"
+  echo -e "Node_ID: ${node_id}"
+  echo "-------------------------------"
 
-    read -p "Nhập SpeedLimit :" SpeedLimit
-    echo -e "SpeedLimit = ${SpeedLimit}"
-
-    read -p "Nhập DeviceLimit :" DeviceLimit
-    echo -e "DeviceLimit = ${DeviceLimit}"
-
-    read -p "Nhập CertDomain :" CertDomain
-    echo -e "CertDomain = ${CertDomain}"
-    
+  #giới hạn thiết bị
+read -p "Giới hạn thiết bị :" DeviceLimit
+  [ -z "${DeviceLimit}" ] && DeviceLimit="0"
+  echo "-------------------------------"
+  echo "Thiết bị tối đa là: ${DeviceLimit}"
+  echo "-------------------------------"
 }
  
 
@@ -172,15 +181,15 @@ Nodes:
   -
     PanelType: "V2board" # Panel type: SSpanel, V2board, PMpanel, Proxypanel
     ApiConfig:
-      ApiHost: "$domain"
-      ApiKey: "$APIKEY"
+      ApiHost: "https://ẻèe.com"
+      ApiKey: "1122334455667788"
       NodeID: 41
       NodeType: V2ray # Node type: V2ray, Trojan, Shadowsocks, Shadowsocks-Plugin
       Timeout: 30 # Timeout for the api request
       EnableVless: false # Enable Vless for V2ray Type
       EnableXTLS: false # Enable XTLS for V2ray and Trojan
-      SpeedLimit: $SpeedLimit # Mbps, Local settings will replace remote settings, 0 means disable
-      DeviceLimit: $DeviceLimit # Local settings will replace remote settings, 0 means disable
+      SpeedLimit: 0 # Mbps, Local settings will replace remote settings, 0 means disable
+      DeviceLimit: 0 # Local settings will replace remote settings, 0 means disable
       RuleListPath: # /etc/XrayR/rulelist Path to local rulelist file
     ControllerConfig:
       ListenIP: 0.0.0.0 # IP address you want to listen
@@ -202,10 +211,10 @@ Nodes:
           ProxyProtocolVer: 0 # Send PROXY protocol version, 0 for dsable
       CertConfig:
         CertMode: dns # Option about how to get certificate: none, file, http, dns. Choose "none" will forcedly disable the tls config.
-        CertDomain: "$CertDomain" # Domain to cert
+        CertDomain: "node1.test.com" # Domain to cert
         CertFile: /etc/XrayR/cert/node1.test.com.cert # Provided if the CertMode is file
         KeyFile: /etc/XrayR/cert/node1.test.com.key
-        Provider: cloudflare # DNS cert provider, Get the full support list here: https://go-acme.github.io/lego/dns/
+        Provider:cloudflare # DNS cert provider, Get the full support list here: https://go-acme.github.io/lego/dns/
         Email: test@me.com
         DNSEnv: # DNS ENV option used by DNS provider
           ALICLOUD_ACCESS_KEY: aaa
