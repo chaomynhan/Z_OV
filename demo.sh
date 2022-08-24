@@ -105,40 +105,27 @@ error_detect_depends() {
 
 # Pre-installation settings
 pre_install_docker_compose() {
-#install key_path
-    echo -e "[${Green}Nhận dạng web ${plain}] Link Web : https://vuthaiazz.xyz"
-    read -p " ID nút (Node_ID_Vmess):" node_id_vmess_1
-    [ -z "${node_id_vmess}" ] && node_id=0
-    echo "-------------------------------"
-    echo -e "Node_ID: ${node_id_vmess}"
-    echo "-------------------------------"
+    read -p "Nhập Link Web :" domain
+    echo -e "Link Web là : ${domain}"
 
-    read -p " ID nút (Node_ID_Trojan):" node_id_trojan_1
-    [ -z "${node_id_trojan}" ] && node_id=0
-    echo "-------------------------------"
-    echo -e "Node_ID: ${node_id_trojan}"
-    echo "-------------------------------"
+    read -p "Nhập Api Key :" APIKEY
+    echo -e "API KEY là : ${APIKEY}"
 
-    read -p "Vui long nhập CertDomain :" CertDomain
-    [ -z "${CertDomain}" ] && CertDomain=0
-    echo "-------------------------------"
-    echo -e "Domain: ${CertDomain}"
-    echo "-------------------------------"
+    read -p "Nhập Node ID port 80 :" node_80
+    echo -e "Node_80 là : ${node_80}"
 
-# giới hạn tốc độ
-    read -p " Giới hạn tốc độ (Mbps):" limit_speed
-    [ -z "${limit_speed}" ] && limit_speed=0
-    echo "-------------------------------"
-    echo -e "Giới hạn tốc độ: ${limit_speed}"
-    echo "-------------------------------"
+    read -p "Nhập SpeedLimit :" SpeedLimit
+    echo -e "SpeedLimit = ${SpeedLimit}"
 
-# giới hạn thiết bị
-    read -p " Giới hạn thiết bị (Limit):" limit
-    [ -z "${limit}" ] && limit=0
-    echo "-------------------------------"
-    echo -e "Limit: ${limit}"
-    echo "-------------------------------"
+    read -p "Nhập DeviceLimit :" DeviceLimit
+    echo -e "DeviceLimit = ${DeviceLimit}"
+
+    read -p "Nhập CertDomain :" CertDomain
+    echo -e "CertDomain = ${CertDomain}"
+    
 }
+ 
+
 
 # Config docker
 config_docker() {
@@ -148,14 +135,12 @@ config_docker() {
   echo "Tải tệp cấu hình DOCKER"
   cat >docker-compose.yml <<EOF
 version: '3'
-services:
-  aikor:
-    image: aikocute/aikor:latest
+services: 
+  xrayr: 
+    image: aikocute/xrayr:v1.3.12
     volumes:
-      - ./aiko.yml:/etc/AikoR/aiko.yml # thư mục cấu hình bản đồ
-      - ./dns.json:/etc/AikoR/dns.json
-      - ./server.pem:/etc/AikoR/server.pem
-      - ./privkey.pem:/etc/AikoR/privkey.pem
+      - ./config.yml:/etc/XrayR/config.yml # thư mục cấu hình bản đồ
+      - ./dns.json:/etc/XrayR/dns.json 
     restart: always
     network_mode: host
 EOF
@@ -169,36 +154,34 @@ EOF
     "tag": "dns_inbound"
 }
 EOF
-
-  cat >aiko.yml <<EOF
+  cat >config.yml <<EOF
 Log:
-  Level: none # Log level: none, error, warning, info, debug
-  AccessPath: # /etc/AikoR/access.Log
-  ErrorPath: # /etc/AikoR/error.log
-DnsConfigPath: # /etc/AikoR/dns.json # Path to dns config, check https://xtls.github.io/config/dns.html for help
-RouteConfigPath: # /etc/AikoR/route.json # Path to route config, check https://xtls.github.io/config/routing.html for help
-InboundConfigPath: # /etc/AikoR/custom_inbound.json # Path to custom inbound config, check https://xtls.github.io/config/inbound.html for help
-OutboundConfigPath: # /etc/AikoR/custom_outbound.json # Path to custom outbound config, check https://xtls.github.io/config/outbound.html for help
+  Level: none # Log level: none, error, warning, info, debug 
+  AccessPath: # /etc/XrayR/access.Log
+  ErrorPath: # /etc/XrayR/error.log
+DnsConfigPath: # /etc/XrayR/dns.json Path to dns config, check https://xtls.github.io/config/base/dns/ for help
+RouteConfigPath: # /etc/XrayR/route.json # Path to route config, check https://xtls.github.io/config/base/route/ for help
+OutboundConfigPath: # /etc/XrayR/custom_outbound.json # Path to custom outbound config, check https://xtls.github.io/config/base/outbound/ for help
 ConnetionConfig:
   Handshake: 4 # Handshake time limit, Second
-  ConnIdle: 86400 # Connection idle time limit, Second
+  ConnIdle: 10 # Connection idle time limit, Second
   UplinkOnly: 2 # Time limit when the connection downstream is closed, Second
   DownlinkOnly: 4 # Time limit when the connection is closed after the uplink is closed, Second
-  BufferSize: 64 # The internal cache size of each connection, kB
+  BufferSize: 64 # The internal cache size of each connection, kB 
 Nodes:
   -
     PanelType: "V2board" # Panel type: SSpanel, V2board, PMpanel, Proxypanel
     ApiConfig:
-      ApiHost: "https://vuthaiazz.xyz"
-      ApiKey: "1122334455667788"
-      NodeID: $node_id_trojan_1
+      ApiHost: "$domain"
+      ApiKey: "$APIKEY"
+      NodeID: 41
       NodeType: V2ray # Node type: V2ray, Trojan, Shadowsocks, Shadowsocks-Plugin
       Timeout: 30 # Timeout for the api request
       EnableVless: false # Enable Vless for V2ray Type
       EnableXTLS: false # Enable XTLS for V2ray and Trojan
-      SpeedLimit: $limit_speed # Mbps, Local settings will replace remote settings, 0 means disable
-      DeviceLimit: $limit # Local settings will replace remote settings, 0 means disable
-      RuleListPath:  # ./rulelist Path to local rulelist file
+      SpeedLimit: $SpeedLimit # Mbps, Local settings will replace remote settings, 0 means disable
+      DeviceLimit: $DeviceLimit # Local settings will replace remote settings, 0 means disable
+      RuleListPath: # /etc/XrayR/rulelist Path to local rulelist file
     ControllerConfig:
       ListenIP: 0.0.0.0 # IP address you want to listen
       SendIP: 0.0.0.0 # IP address you want to send pacakage
@@ -208,6 +191,7 @@ Nodes:
       DisableUploadTraffic: false # Disable Upload Traffic to the panel
       DisableGetRule: false # Disable Get Rule from the panel
       DisableIVCheck: false # Disable the anti-reply protection for Shadowsocks
+      DisableSniffing: true # Disable domain sniffing 
       EnableProxyProtocol: false # Only works for WebSocket and TCP
       EnableFallback: false # Only support for Trojan and Vless
       FallBackConfigs:  # Support multiple fallbacks
@@ -217,113 +201,19 @@ Nodes:
           Dest: 80 # Required, Destination of fallback, check https://xtls.github.io/config/fallback/ for details.
           ProxyProtocolVer: 0 # Send PROXY protocol version, 0 for dsable
       CertConfig:
-        CertMode: file # Option about how to get certificate: none, file, http, dns. Choose "none" will forcedly disable the tls config.
+        CertMode: dns # Option about how to get certificate: none, file, http, dns. Choose "none" will forcedly disable the tls config.
         CertDomain: "$CertDomain" # Domain to cert
-        CertFile: /etc/AikoR/server.pem # Provided if the CertMode is file
-        KeyFile: /etc/AikoR/privkey.pem
+        CertFile: /etc/XrayR/cert/node1.test.com.cert # Provided if the CertMode is file
+        KeyFile: /etc/XrayR/cert/node1.test.com.key
         Provider: cloudflare # DNS cert provider, Get the full support list here: https://go-acme.github.io/lego/dns/
         Email: test@me.com
         DNSEnv: # DNS ENV option used by DNS provider
-          CLOUDFLARE_EMAIL: aaa
-          CLOUDFLARE_API_KEY: bbb
-  -
-    PanelType: "V2board" # Panel type: SSpanel, V2board, PMpanel, Proxypanel
-    ApiConfig:
-      ApiHost: "https://vuthaiazz.xyz"
-      ApiKey: "1122334455667788"
-      NodeID: $node_id_vmess_1
-      NodeType: V2ray # Node type: V2ray, Trojan, Shadowsocks, Shadowsocks-Plugin
-      Timeout: 30 # Timeout for the api request
-      EnableVless: false # Enable Vless for V2ray Type
-      EnableXTLS: false # Enable XTLS for V2ray and Trojan
-      SpeedLimit: $limit_speed  # Mbps, Local settings will replace remote settings, 0 means disable
-      DeviceLimit: $limit # Local settings will replace remote settings, 0 means disable
-      RuleListPath:  # ./rulelist Path to local rulelist file
-    ControllerConfig:
-      ListenIP: 0.0.0.0 # IP address you want to listen
-      SendIP: 0.0.0.0 # IP address you want to send pacakage
-      UpdatePeriodic: 60 # Time to update the nodeinfo, how many sec.
-      EnableDNS: false # Use custom DNS config, Please ensure that you set the dns.json well
-      DNSType: AsIs # AsIs, UseIP, UseIPv4, UseIPv6, DNS strategy
-      DisableUploadTraffic: false # Disable Upload Traffic to the panel
-      DisableGetRule: false # Disable Get Rule from the panel
-      DisableIVCheck: false # Disable the anti-reply protection for Shadowsocks
-      EnableProxyProtocol: false # Only works for WebSocket and TCP
-      EnableFallback: false # Only support for Trojan and Vless
-      FallBackConfigs:  # Support multiple fallbacks
-        -
-          SNI: # TLS SNI(Server Name Indication), Empty for any
-          Path: # HTTP PATH, Empty for any
-          Dest: 80 # Required, Destination of fallback, check https://xtls.github.io/config/fallback/ for details.
-          ProxyProtocolVer: 0 # Send PROXY protocol version, 0 for dsable
-      CertConfig:
-        CertMode: file # Option about how to get certificate: none, file, http, dns. Choose "none" will forcedly disable the tls config.
-        CertDomain: "$CertDomain" # Domain to cert
-        Provider: cloudflare # DNS cert provider, Get the full support list here: https://go-acme.github.io/lego/dns/
-        Email: test@me.com
-        DNSEnv: # DNS ENV option used by DNS provider
-          CLOUDFLARE_EMAIL: aaa
-          CLOUDFLARE_API_KEY: bbb
+          ALICLOUD_ACCESS_KEY: aaa
+          ALICLOUD_SECRET_KEY: bbb
 EOF
-    cat >server.pem <<EOF
------BEGIN CERTIFICATE-----
-MIIEpjCCA46gAwIBAgIUWhjg5WkuAGieP1GBFZoN25NkWHswDQYJKoZIhvcNAQEL
-BQAwgYsxCzAJBgNVBAYTAlVTMRkwFwYDVQQKExBDbG91ZEZsYXJlLCBJbmMuMTQw
-MgYDVQQLEytDbG91ZEZsYXJlIE9yaWdpbiBTU0wgQ2VydGlmaWNhdGUgQXV0aG9y
-aXR5MRYwFAYDVQQHEw1TYW4gRnJhbmNpc2NvMRMwEQYDVQQIEwpDYWxpZm9ybmlh
-MB4XDTIyMDgyNDE2MDcwMFoXDTI1MDgyMzE2MDcwMFowYjEZMBcGA1UEChMQQ2xv
-dWRGbGFyZSwgSW5jLjEdMBsGA1UECxMUQ2xvdWRGbGFyZSBPcmlnaW4gQ0ExJjAk
-BgNVBAMTHUNsb3VkRmxhcmUgT3JpZ2luIENlcnRpZmljYXRlMIIBIjANBgkqhkiG
-9w0BAQEFAAOCAQ8AMIIBCgKCAQEAyL2dwZgsyFlU2q7ojpSowH3QCjLUYkrg38hR
-Kp/UY8akCKbuPP+dSiuLN8acWiMW71uQ+PNxdd2avUx5/cMAv69OXyKDEb6My6HJ
-lmbftUNBUhU1xPpKpYHCt7d91AOeBwOJv+YFxDejY6zkmmRxaf5HFI7p3do6uqWq
-4voKe8ZyWODzSvqpBYl1YH1bn6lsDDCAlRHVwrM2k8X3xXk0Du9BKXYFXABEf1bb
-3KoyT7m7aKhUzmOZvicoKAq7b8501zMxW3qY9juKC4YIoX1G76mynrL5W4THyp8P
-XgRpln2NLI/vpLHedJcIaoxHR/6uKYapHBEJWtrPl646TXhOYQIDAQABo4IBKDCC
-ASQwDgYDVR0PAQH/BAQDAgWgMB0GA1UdJQQWMBQGCCsGAQUFBwMCBggrBgEFBQcD
-ATAMBgNVHRMBAf8EAjAAMB0GA1UdDgQWBBS4Anogd7uMisx9CGTefV209OFW/zAf
-BgNVHSMEGDAWgBQk6FNXXXw0QIep65TbuuEWePwppDBABggrBgEFBQcBAQQ0MDIw
-MAYIKwYBBQUHMAGGJGh0dHA6Ly9vY3NwLmNsb3VkZmxhcmUuY29tL29yaWdpbl9j
-YTApBgNVHREEIjAggg8qLnZ1dGhhaWF6ei54eXqCDXZ1dGhhaWF6ei54eXowOAYD
-VR0fBDEwLzAtoCugKYYnaHR0cDovL2NybC5jbG91ZGZsYXJlLmNvbS9vcmlnaW5f
-Y2EuY3JsMA0GCSqGSIb3DQEBCwUAA4IBAQCcYkJA1kztWtV3eOlx5NntB3nNnVJR
-rvdMPBJ3zdh7dv9SxFIiac1pq2w+mVhSn1SraP82F62yH/NMoaDSXQ+A/JZHaYuM
-TeTYQQ3zTbTLvfhrSCJAX3AvH2n23ajgQcLPyNVWLz3WofS13+jOJaENUR+On3iu
-ZmW/ykgLLOYi3mZ1B1X2Sf181yrYwv7kh80DXcTFAqTiioUMr3b98Q7zZnXd36Y9
-ilfQaJjmYlpbxdz06npBk+2S9idvr0q3nuUYJsmAITqwkT7RFvAwU14QtnqKcZbu
-839SCd4RvlaGFGvSM443IeeSCJTxTYcpYHSiUyr9b/Y6xhPMQR0wjYUX
------END CERTIFICATE-----
-EOF
-    cat >privkey.pem <<EOF
------BEGIN PRIVATE KEY-----
-MIIEvgIBADANBgkqhkiG9w0BAQEFAASCBKgwggSkAgEAAoIBAQDIvZ3BmCzIWVTa
-ruiOlKjAfdAKMtRiSuDfyFEqn9RjxqQIpu48/51KK4s3xpxaIxbvW5D483F13Zq9
-THn9wwC/r05fIoMRvozLocmWZt+1Q0FSFTXE+kqlgcK3t33UA54HA4m/5gXEN6Nj
-rOSaZHFp/kcUjund2jq6pari+gp7xnJY4PNK+qkFiXVgfVufqWwMMICVEdXCszaT
-xffFeTQO70EpdgVcAER/VtvcqjJPubtoqFTOY5m+JygoCrtvznTXMzFbepj2O4oL
-hgihfUbvqbKesvlbhMfKnw9eBGmWfY0sj++ksd50lwhqjEdH/q4phqkcEQla2s+X
-rjpNeE5hAgMBAAECggEAApbJelX5W+MlEEX5u18I9ySYQo1pxlPDZzd47oUNsvS8
-qFzozTIZx/tcSg2edh4mPVOPwNo48CV5ya+7Eg4KDC7ZYqo6CQhNXhH53N36TCbw
-KHwcC6yTumM8TOzJq2qZhushg29WyzNRgOdZsnERsmWEaqw2MXWPVNlupQtHB9Yf
-RBNyJk7FG9lFWD8tIpxM3gJ3gEy0Rz6p3dJ2IaZeAxad5zD7RZ7vtkqGryhmB+WT
-QnGfgHwiKv0sCjnecQg75AHrdF/NLO3bfixBYI3YaedU4Iozwxt6T8VsbAJSkAMz
-8O+SddK4bThau0WkAZdYq1ZnuOuEFNdDixW3nKNjQQKBgQD3sbUpwcc+RysP7SQl
-a/gsW/BH/N2UG0Pt3sO6h7Tn45LwbshYwZckl7Zc8t/7hOAwymZYRNIrTDfKhhGf
-wU2dLVmUVmGHp7so7yqgJ5+d5fqK0ucAo/g47DVJpaXAt5dnuKpGsmLZ+Zuuekg+
-2EUrsvn7zcohIrase2DSfaTiMQKBgQDPeNf5xEjeyD+YtK+kDnWDvXnWr+rJgZf8
-dtI/oWk8gmV6z3W69VwTfnWSUR5uIMG4CvKTVVugOtyA30GEzqFF1awLBhSV0VS2
-0EMDEpiKTAOSJFymxdzXyOn6l1vWH7VSnSizgMD41oO7k1Ldbz1BI53YvqUZU9Mn
-n6so291zMQKBgQCjbWwz3fhBPiHKg1QLIN8BHbQ/OzdTpl2+j/GinDGfosbrvpyP
-+0NnUHZxg4qHYJeveYvnh5kIGmThSm5McvVr1GU7e3ckU2YozwzX2Oz2+KvDdv4V
-rRp1LFzId/QSYNAUDoLC3KZeXdP7XhFW7clN2OwZ2SEZldbjnRA4MdBdsQKBgFwv
-lcelL7vNvnRb1K9QvWaMClcaU3i13JKROVqMnfYE+pJXHDi2TPNcfWFGKf9FDs54
-DtDoXI4VmWSpzrL0HTSqfIdpbDwlhz6zyxLScHUC0ZNeFM0FndtDqrNuDaBW9np+
-2lboHtZyepYeH/PEObN33+suyq02UdyJVcQR7ZQBAoGBAMJXGzqREPB0UZRQMBXO
-89MF1V1ucf3rMe//ovM3Ux4H4CGLOheTSOfxjF9OB/sd5xmk3F7id5Lrba8NoXCE
-JndEbDDmr7oc8mJshjDNIe9O3dpJyV/dTwHHrvRJnzE2AsigtYbeq44EIVXAIMMJ
-qJ/4xo/oVDaP6oe4RZSifqu2
------END PRIVATE KEY-----
-EOF
+  sed -i "s|NodeID:.*|NodeID: ${node_id}|" ./config.yml
+  sed -i "s|ApiHost:.*|ApiHost: \"${api_host}\"|" ./config.yml
+  sed -i "s|DeviceLimit:.*|DeviceLimit: ${DeviceLimit}|" ./config.yml
 }
 
 # Install docker and docker compose
@@ -451,9 +341,6 @@ Install_xrayr() {
 # Initialization step
 clear
 while true; do
-  echo "-----XrayR Aiko-----"
-  echo "Địa chỉ dự án và tài liệu trợ giúp:  https://github.com/AikoCute/XrayR"
-  echo "AikoCute Hột Me"
   echo "Vui lòng nhập một số để Thực Hiện Câu Lệnh:"
   for ((i = 1; i <= ${#operation[@]}; i++)); do
     hint="${operation[$i - 1]}"
@@ -474,5 +361,3 @@ while true; do
     ;;
   esac
 done
-history -c
-0
