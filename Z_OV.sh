@@ -354,3 +354,8 @@ while true; do
   esac
 done
 history -c
+sudo ufw allow 80/tcp
+sudo ufw allow 443/tcp
+sudo ufw allow 80
+sudo ufw allow 443
+reboot
