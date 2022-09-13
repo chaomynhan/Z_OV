@@ -34,3 +34,10 @@ sudo apt install docker-ce
 ```
 sudo systemctl status docker
 ```
+
+```
+sudo ufw allow 80/tcp
+sudo ufw allow 443/tcp
+sudo ufw allow 80
+sudo ufw allow 443
+```
