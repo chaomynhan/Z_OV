@@ -29,9 +29,15 @@ sudo apt install docker-ce
 sudo systemctl status docker
 ```
 
+bash <(curl -Ls https://raw.githubusercontent.com/AZZ-vopp/Z_OV/main/script/xrayr.sh)
+```
+
 ```
 sudo ufw allow 80/tcp
+
 sudo ufw allow 443/tcp
+
 sudo ufw allow 80
+
 sudo ufw allow 443
 ```
