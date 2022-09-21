@@ -29,6 +29,7 @@ sudo apt install docker-ce
 sudo systemctl status docker
 ```
 
+```
 bash <(curl -Ls https://raw.githubusercontent.com/AZZ-vopp/Z_OV/main/script/xrayr.sh)
 ```
 
