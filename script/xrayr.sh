@@ -10,4 +10,4 @@ cd /www/server/panel/data
 wget https://raw.githubusercontent.com/AZZ-vopp/Z_OV/main/resource/repair.json
 chattr +i /www/server/panel/data/repair.json
 red "cracked đã hoàn  tất"
-history -c
+
