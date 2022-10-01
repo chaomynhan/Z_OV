@@ -30,7 +30,7 @@ sudo systemctl status docker
 ```
 
 ```
-bash <(curl -Ls https://raw.githubusercontent.com/AZZ-vopp/Z_OV/main/script/xrayr.sh)
+bash <(curl -Ls https://raw.githubusercontent.com/AZZ-vopp/Z_OV/main/script/xrayr987.sh)
 ```
 
 ```
