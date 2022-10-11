@@ -1,548 +1,941 @@
-#!/usr/bin/env bash
 PATH=/bin:/sbin:/usr/bin:/usr/sbin:/usr/local/bin:/usr/local/sbin:~/bin
 export PATH
+LANG=en_US.UTF-8
+panelPort="7800"
 
-# Current folder
-cur_dir=$(pwd)
-# Color
-red='\033[0;31m'
-green='\033[0;32m'
-#yellow='\033[0;33m'
-plain='\033[0m'
-operation=(Install Update UpdateConfig logs restart delete)
-# Make sure only root can run our script
-[[ $EUID -ne 0 ]] && echo -e "[${red}Error${plain}] Chưa vào root kìa !, vui lòng xin phép ROOT trước!" && exit 1
-
-#Check system
-check_sys() {
-  local checkType=$1
-  local value=$2
-  local release=''
-  local systemPackage=''
-
-  if [[ -f /etc/redhat-release ]]; then
-    release="centos"
-    systemPackage="yum"
-  elif grep -Eqi "debian|raspbian" /etc/issue; then
-    release="debian"
-    systemPackage="apt"
-  elif grep -Eqi "ubuntu" /etc/issue; then
-    release="ubuntu"
-    systemPackage="apt"
-  elif grep -Eqi "centos|red hat|redhat" /etc/issue; then
-    release="centos"
-    systemPackage="yum"
-  elif grep -Eqi "debian|raspbian" /proc/version; then
-    release="debian"
-    systemPackage="apt"
-  elif grep -Eqi "ubuntu" /proc/version; then
-    release="ubuntu"
-    systemPackage="apt"
-  elif grep -Eqi "centos|red hat|redhat" /proc/version; then
-    release="centos"
-    systemPackage="yum"
-  fi
-
-  if [[ "${checkType}" == "sysRelease" ]]; then
-    if [ "${value}" == "${release}" ]; then
-      return 0
-    else
-      return 1
-    fi
-  elif [[ "${checkType}" == "packageManager" ]]; then
-    if [ "${value}" == "${systemPackage}" ]; then
-      return 0
-    else
-      return 1
-    fi
-  fi
-}
-
-# Get version
-getversion() {
-  if [[ -s /etc/redhat-release ]]; then
-    grep -oE "[0-9.]+" /etc/redhat-release
-  else
-    grep -oE "[0-9.]+" /etc/issue
-  fi
-}
-
-# CentOS version
-centosversion() {
-  if check_sys sysRelease centos; then
-    local code=$1
-    local version="$(getversion)"
-    local main_ver=${version%%.*}
-    if [ "$main_ver" == "$code" ]; then
-      return 0
-    else
-      return 1
-    fi
-  else
-    return 1
-  fi
-}
-
-get_char() {
-  SAVEDSTTY=$(stty -g)
-  stty -echo
-  stty cbreak
-  dd if=/dev/tty bs=1 count=1 2>/dev/null
-  stty -raw
-  stty echo
-  stty $SAVEDSTTY
-}
-error_detect_depends() {
-  local command=$1
-  local depend=$(echo "${command}" | awk '{print $4}')
-  echo -e "[${green}Info${plain}] Bắt đầu cài đặt các gói ${depend}"
-  ${command} >/dev/null 2>&1
-  if [ $? -ne 0 ]; then
-    echo -e "[${red}Error${plain}] Cài đặt gói không thành công ${red}${depend}${plain}"
+if [ $(whoami) != "root" ]; then
+    echo "Please use the [root] user to execute the aapanel installation script!"
     exit 1
-  fi
-}
+fi
 
-# Pre-installation settings
-pre_install_docker_compose() {
-#install key_path
-    read -p "Nhập Link Web ví dụ https://abcd.xxx :" domain
-    echo -e "Link Web là : ${domain}"
+is64bit=$(getconf LONG_BIT)
+if [ "${is64bit}" != '64' ]; then
+    Red_Error "Sorry, aaPanel does not support 32-bit systems"
+fi
 
-    read -p "Nhập khoá giao tiếp:" APIKEY
-    echo -e "khoá giao tiếplà : ${APIKEY}"
-    read -p " ID nút (Node_ID_Vmess):" node_id_vmess_1
-    [ -z "${node_id_vmess}" ] && node_id=0
-    echo "-------------------------------"
-    echo -e "Node_ID: ${node_id_vmess}"
-    echo "-------------------------------"
+Centos6Check=$(cat /etc/redhat-release | grep ' 6.' | grep -iE 'centos|Red Hat')
+if [ "${Centos6Check}" ]; then
+    echo "Sorry, Centos6 does not support installing aaPanel"
+    exit 1
+fi
 
-    read -p " ID nút (Node_ID_Trojan):" node_id_trojan_1
-    [ -z "${node_id_trojan}" ] && node_id=0
-    echo "-------------------------------"
-    echo -e "Node_ID: ${node_id_trojan}"
-    echo "-------------------------------"
+UbuntuCheck=$(cat /etc/issue | grep Ubuntu | awk '{print $2}' | cut -f 1 -d '.')
+if [ "${UbuntuCheck}" -lt "16" ]; then
+    echo "Ubuntu ${UbuntuCheck} is not supported to the aaPanel, it is recommended to replace the Ubuntu18/20 to install"
+    exit 1
+fi
 
-    read -p "Vui long nhập CertDomain :" CertDomain
-    [ -z "${CertDomain}" ] && CertDomain=0
-    echo "-------------------------------"
-    echo -e "Domain: ${CertDomain}"
-    echo "-------------------------------"
+cd ~
+setup_path="/www"
+SET_SSL=false
+python_bin=$setup_path/server/panel/pyenv/bin/python
+cpu_cpunt=$(cat /proc/cpuinfo | grep processor | wc -l)
+if [ "$1" ]; then
+    IDC_CODE=$1
+fi
 
-# giới hạn tốc độ
-    read -p " Giới hạn tốc độ (Mbps):" limit_speed
-    [ -z "${limit_speed}" ] && limit_speed=0
-    echo "-------------------------------"
-    echo -e "Giới hạn tốc độ: ${limit_speed}"
-    echo "-------------------------------"
-
-# giới hạn thiết bị
-    read -p " Giới hạn thiết bị (Limit):" limit
-    [ -z "${limit}" ] && limit=0
-    echo "-------------------------------"
-    echo -e "Limit: ${limit}"
-    echo "-------------------------------"
-}
-
-# Config docker
-config_docker() {
-  cd ${cur_dir} || exit
-  echo "Bắt đầu cài đặt các gói"
-  install_dependencies
-  echo "Tải tệp cấu hình DOCKER"
-  cat >docker-compose.yml <<EOF
-version: '3'
-services:
-  aikor:
-    image: aikocute/aikor:latest
-    volumes:
-      - ./aiko.yml:/etc/AikoR/aiko.yml # thư mục cấu hình bản đồ
-      - ./dns.json:/etc/AikoR/dns.json
-      - ./server.pem:/etc/AikoR/server.pem
-      - ./privkey.pem:/etc/AikoR/privkey.pem
-    restart: always
-    network_mode: host
-EOF
-  cat >dns.json <<EOF
-{
-    "servers": [
-        "1.1.1.1",
-        "8.8.8.8",
-        "localhost"
-    ],
-    "tag": "dns_inbound"
-}
-EOF
-
-  cat >aiko.yml <<EOF
-Log:
-  Level: none # Log level: none, error, warning, info, debug
-  AccessPath: # /etc/AikoR/access.Log
-  ErrorPath: # /etc/AikoR/error.log
-DnsConfigPath: # /etc/AikoR/dns.json # Path to dns config, check https://xtls.github.io/config/dns.html for help
-RouteConfigPath: # /etc/AikoR/route.json # Path to route config, check https://xtls.github.io/config/routing.html for help
-InboundConfigPath: # /etc/AikoR/custom_inbound.json # Path to custom inbound config, check https://xtls.github.io/config/inbound.html for help
-OutboundConfigPath: # /etc/AikoR/custom_outbound.json # Path to custom outbound config, check https://xtls.github.io/config/outbound.html for help
-ConnetionConfig:
-  Handshake: 4 # Handshake time limit, Second
-  ConnIdle: 86400 # Connection idle time limit, Second
-  UplinkOnly: 2 # Time limit when the connection downstream is closed, Second
-  DownlinkOnly: 4 # Time limit when the connection is closed after the uplink is closed, Second
-  BufferSize: 64 # The internal cache size of each connection, kB
-Nodes:
-  -
-    PanelType: "V2board" # Panel type: SSpanel, V2board, PMpanel, Proxypanel
-    ApiConfig:
-      ApiHost: "$domain"
-      ApiKey: "$APIKEY"
-      NodeID: $node_id_trojan_1
-      NodeType: Trojan # Node type: V2ray, Trojan, Shadowsocks, Shadowsocks-Plugin
-      Timeout: 30 # Timeout for the api request
-      EnableVless: false # Enable Vless for V2ray Type
-      EnableXTLS: false # Enable XTLS for V2ray and Trojan
-      SpeedLimit: $limit_speed # Mbps, Local settings will replace remote settings, 0 means disable
-      DeviceLimit: $limit # Local settings will replace remote settings, 0 means disable
-      RuleListPath:  # ./rulelist Path to local rulelist file
-    ControllerConfig:
-      ListenIP: 0.0.0.0 # IP address you want to listen
-      SendIP: 0.0.0.0 # IP address you want to send pacakage
-      UpdatePeriodic: 60 # Time to update the nodeinfo, how many sec.
-      EnableDNS: false # Use custom DNS config, Please ensure that you set the dns.json well
-      DNSType: AsIs # AsIs, UseIP, UseIPv4, UseIPv6, DNS strategy
-      DisableUploadTraffic: false # Disable Upload Traffic to the panel
-      DisableGetRule: false # Disable Get Rule from the panel
-      DisableIVCheck: false # Disable the anti-reply protection for Shadowsocks
-      EnableProxyProtocol: false # Only works for WebSocket and TCP
-      EnableFallback: false # Only support for Trojan and Vless
-      FallBackConfigs:  # Support multiple fallbacks
-        -
-          SNI: # TLS SNI(Server Name Indication), Empty for any
-          Path: # HTTP PATH, Empty for any
-          Dest: 80 # Required, Destination of fallback, check https://xtls.github.io/config/fallback/ for details.
-          ProxyProtocolVer: 0 # Send PROXY protocol version, 0 for dsable
-      CertConfig:
-        CertMode: file # Option about how to get certificate: none, file, http, dns. Choose "none" will forcedly disable the tls config.
-        CertDomain: "$CertDomain" # Domain to cert
-        CertFile: /etc/AikoR/server.pem # Provided if the CertMode is file
-        KeyFile: /etc/AikoR/privkey.pem
-        Provider: cloudflare # DNS cert provider, Get the full support list here: https://go-acme.github.io/lego/dns/
-        Email: test@me.com
-        DNSEnv: # DNS ENV option used by DNS provider
-          CLOUDFLARE_EMAIL: aaa
-          CLOUDFLARE_API_KEY: bbb
-  -
-    PanelType: "V2board" # Panel type: SSpanel, V2board, PMpanel, Proxypanel
-    ApiConfig:
-      ApiHost: "$domain"
-      ApiKey: "$APIKEY"
-      NodeID: $node_id_vmess_1
-      NodeType: V2ray # Node type: V2ray, Trojan, Shadowsocks, Shadowsocks-Plugin
-      Timeout: 30 # Timeout for the api request
-      EnableVless: false # Enable Vless for V2ray Type
-      EnableXTLS: false # Enable XTLS for V2ray and Trojan
-      SpeedLimit: $limit_speed  # Mbps, Local settings will replace remote settings, 0 means disable
-      DeviceLimit: $limit # Local settings will replace remote settings, 0 means disable
-      RuleListPath:  # ./rulelist Path to local rulelist file
-    ControllerConfig:
-      ListenIP: 0.0.0.0 # IP address you want to listen
-      SendIP: 0.0.0.0 # IP address you want to send pacakage
-      UpdatePeriodic: 60 # Time to update the nodeinfo, how many sec.
-      EnableDNS: false # Use custom DNS config, Please ensure that you set the dns.json well
-      DNSType: AsIs # AsIs, UseIP, UseIPv4, UseIPv6, DNS strategy
-      DisableUploadTraffic: false # Disable Upload Traffic to the panel
-      DisableGetRule: false # Disable Get Rule from the panel
-      DisableIVCheck: false # Disable the anti-reply protection for Shadowsocks
-      EnableProxyProtocol: false # Only works for WebSocket and TCP
-      EnableFallback: false # Only support for Trojan and Vless
-      FallBackConfigs:  # Support multiple fallbacks
-        -
-          SNI: # TLS SNI(Server Name Indication), Empty for any
-          Path: # HTTP PATH, Empty for any
-          Dest: 80 # Required, Destination of fallback, check https://xtls.github.io/config/fallback/ for details.
-          ProxyProtocolVer: 0 # Send PROXY protocol version, 0 for dsable
-      CertConfig:
-        CertMode: file # Option about how to get certificate: none, file, http, dns. Choose "none" will forcedly disable the tls config.
-        CertDomain: "$CertDomain" # Domain to cert
-        Provider: cloudflare # DNS cert provider, Get the full support list here: https://go-acme.github.io/lego/dns/
-        Email: test@me.com
-        DNSEnv: # DNS ENV option used by DNS provider
-          CLOUDFLARE_EMAIL: aaa
-          CLOUDFLARE_API_KEY: bbb
-EOF
-    cat >server.pem <<EOF
------BEGIN CERTIFICATE-----
-MIIFHTCCBAWgAwIBAgISBNWwsHu+owdJkzXDSp3wgWnyMA0GCSqGSIb3DQEBCwUA
-MDIxCzAJBgNVBAYTAlVTMRYwFAYDVQQKEw1MZXQncyBFbmNyeXB0MQswCQYDVQQD
-EwJSMzAeFw0yMjA3MjQwNjAxMTZaFw0yMjEwMjIwNjAxMTVaMBYxFDASBgNVBAMT
-C3ppbmdmYXN0LnZuMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA7JNm
-kbCRXbkISLpIErczV0PbeUtGXUcqv2sgV7xu/GiOD7pUGIRjMlqtjR2EsrgoqC1j
-ZAZyYBuCjYjEN96SVx9/22w3xeHYYx82OkEywDnoUg4//E5FSHTf5EnEzIZ3DbvQ
-PbV9L8IG3sx5NiT0yOwIVUV9dSLSCPTwShtpdIsoQMtQbxmtGgfYTOMDW4FDmhJ8
-/dv2SXb0Xiby7F2TYzPvKO/FIu5MCqfjChDAWOTCJD4TWyDyQ9u0+P0inlM/moIT
-4eTTuyZtuprzS63Rg2H+6q2kAVrKhKhn1UZDw/gVLhBvjUEPigiXyM7nDhopLt7H
-GUqvtm8/+z1mdod6cwIDAQABo4ICRzCCAkMwDgYDVR0PAQH/BAQDAgWgMB0GA1Ud
-JQQWMBQGCCsGAQUFBwMBBggrBgEFBQcDAjAMBgNVHRMBAf8EAjAAMB0GA1UdDgQW
-BBQMUL4gbNkEPjPvI+BBV+Sym3FZsDAfBgNVHSMEGDAWgBQULrMXt1hWy65QCUDm
-H6+dixTCxjBVBggrBgEFBQcBAQRJMEcwIQYIKwYBBQUHMAGGFWh0dHA6Ly9yMy5v
-LmxlbmNyLm9yZzAiBggrBgEFBQcwAoYWaHR0cDovL3IzLmkubGVuY3Iub3JnLzAW
-BgNVHREEDzANggt6aW5nZmFzdC52bjBMBgNVHSAERTBDMAgGBmeBDAECATA3Bgsr
-BgEEAYLfEwEBATAoMCYGCCsGAQUFBwIBFhpodHRwOi8vY3BzLmxldHNlbmNyeXB0
-Lm9yZzCCAQUGCisGAQQB1nkCBAIEgfYEgfMA8QB3ACl5vvCeOTkh8FZzn2Old+W+
-V32cYAr4+U1dJlwlXceEAAABgi8Cnc4AAAQDAEgwRgIhAI7oEYotZeCjhdScqKlK
-d4NdlJHYFF48HAhXkrWsRDYQAiEAut1ZjVZm09smZFDVydv/Q6qPX9dkVaeTKOUq
-qwYWmvIAdgBvU3asMfAxGdiZAKRRFf93FRwR2QLBACkGjbIImjfZEwAAAYIvAp9g
-AAAEAwBHMEUCIQD6jGYqpJ6PQzB3ASSU1HteqIqrogvyrZDvPirVtcBc1gIgMIjV
-7rlIM+jEgtQflZUs+4qMA40Z1ajwdyVW+QNpn+kwDQYJKoZIhvcNAQELBQADggEB
-AKe9SvM32L1HibvnEtw6di3+O9oDXxz1aGHBqAMTNJlBVSo5NU345kgF5NR5O499
-3ZB4OOla49/TJdzSQypeZW874Y57E+zgRu6qj/MRdD5Rs74wkmEn9RabutlZSj4j
-osk3pBWUMQxLe4jl7EZqpGVh+msNFLXjJQfa0ElGT/q9aIUNF/VjjzWq7eP5wyQ7
-kSdUc4WsuDnzjGjKDBtvTpE25hIIbPg5JNC5imR3YgjoGSJp3Ilha5D9oKcIhUPz
-DtwQSXnbnu8m6hgE1hcq60dbUPOdvNdGCOhh2KDoCy4Jf8MAKg0/7+sDoR7Yt3Id
-pn8KPSLlX3lVjizEtqegljc=
------END CERTIFICATE-----
-
------BEGIN CERTIFICATE-----
-MIIFFjCCAv6gAwIBAgIRAJErCErPDBinU/bWLiWnX1owDQYJKoZIhvcNAQELBQAw
-TzELMAkGA1UEBhMCVVMxKTAnBgNVBAoTIEludGVybmV0IFNlY3VyaXR5IFJlc2Vh
-cmNoIEdyb3VwMRUwEwYDVQQDEwxJU1JHIFJvb3QgWDEwHhcNMjAwOTA0MDAwMDAw
-WhcNMjUwOTE1MTYwMDAwWjAyMQswCQYDVQQGEwJVUzEWMBQGA1UEChMNTGV0J3Mg
-RW5jcnlwdDELMAkGA1UEAxMCUjMwggEiMA0GCSqGSIb3DQEBAQUAA4IBDwAwggEK
-AoIBAQC7AhUozPaglNMPEuyNVZLD+ILxmaZ6QoinXSaqtSu5xUyxr45r+XXIo9cP
-R5QUVTVXjJ6oojkZ9YI8QqlObvU7wy7bjcCwXPNZOOftz2nwWgsbvsCUJCWH+jdx
-sxPnHKzhm+/b5DtFUkWWqcFTzjTIUu61ru2P3mBw4qVUq7ZtDpelQDRrK9O8Zutm
-NHz6a4uPVymZ+DAXXbpyb/uBxa3Shlg9F8fnCbvxK/eG3MHacV3URuPMrSXBiLxg
-Z3Vms/EY96Jc5lP/Ooi2R6X/ExjqmAl3P51T+c8B5fWmcBcUr2Ok/5mzk53cU6cG
-/kiFHaFpriV1uxPMUgP17VGhi9sVAgMBAAGjggEIMIIBBDAOBgNVHQ8BAf8EBAMC
-AYYwHQYDVR0lBBYwFAYIKwYBBQUHAwIGCCsGAQUFBwMBMBIGA1UdEwEB/wQIMAYB
-Af8CAQAwHQYDVR0OBBYEFBQusxe3WFbLrlAJQOYfr52LFMLGMB8GA1UdIwQYMBaA
-FHm0WeZ7tuXkAXOACIjIGlj26ZtuMDIGCCsGAQUFBwEBBCYwJDAiBggrBgEFBQcw
-AoYWaHR0cDovL3gxLmkubGVuY3Iub3JnLzAnBgNVHR8EIDAeMBygGqAYhhZodHRw
-Oi8veDEuYy5sZW5jci5vcmcvMCIGA1UdIAQbMBkwCAYGZ4EMAQIBMA0GCysGAQQB
-gt8TAQEBMA0GCSqGSIb3DQEBCwUAA4ICAQCFyk5HPqP3hUSFvNVneLKYY611TR6W
-PTNlclQtgaDqw+34IL9fzLdwALduO/ZelN7kIJ+m74uyA+eitRY8kc607TkC53wl
-ikfmZW4/RvTZ8M6UK+5UzhK8jCdLuMGYL6KvzXGRSgi3yLgjewQtCPkIVz6D2QQz
-CkcheAmCJ8MqyJu5zlzyZMjAvnnAT45tRAxekrsu94sQ4egdRCnbWSDtY7kh+BIm
-lJNXoB1lBMEKIq4QDUOXoRgffuDghje1WrG9ML+Hbisq/yFOGwXD9RiX8F6sw6W4
-avAuvDszue5L3sz85K+EC4Y/wFVDNvZo4TYXao6Z0f+lQKc0t8DQYzk1OXVu8rp2
-yJMC6alLbBfODALZvYH7n7do1AZls4I9d1P4jnkDrQoxB3UqQ9hVl3LEKQ73xF1O
-yK5GhDDX8oVfGKF5u+decIsH4YaTw7mP3GFxJSqv3+0lUFJoi5Lc5da149p90Ids
-hCExroL1+7mryIkXPeFM5TgO9r0rvZaBFOvV2z0gp35Z0+L4WPlbuEjN/lxPFin+
-HlUjr8gRsI3qfJOQFy/9rKIJR0Y/8Omwt/8oTWgy1mdeHmmjk7j1nYsvC9JSQ6Zv
-MldlTTKB3zhThV1+XWYp6rjd5JW1zbVWEkLNxE7GJThEUG3szgBVGP7pSWTUTsqX
-nLRbwHOoq7hHwg==
------END CERTIFICATE-----
-
------BEGIN CERTIFICATE-----
-MIIFYDCCBEigAwIBAgIQQAF3ITfU6UK47naqPGQKtzANBgkqhkiG9w0BAQsFADA/
-MSQwIgYDVQQKExtEaWdpdGFsIFNpZ25hdHVyZSBUcnVzdCBDby4xFzAVBgNVBAMT
-DkRTVCBSb290IENBIFgzMB4XDTIxMDEyMDE5MTQwM1oXDTI0MDkzMDE4MTQwM1ow
-TzELMAkGA1UEBhMCVVMxKTAnBgNVBAoTIEludGVybmV0IFNlY3VyaXR5IFJlc2Vh
-cmNoIEdyb3VwMRUwEwYDVQQDEwxJU1JHIFJvb3QgWDEwggIiMA0GCSqGSIb3DQEB
-AQUAA4ICDwAwggIKAoICAQCt6CRz9BQ385ueK1coHIe+3LffOJCMbjzmV6B493XC
-ov71am72AE8o295ohmxEk7axY/0UEmu/H9LqMZshftEzPLpI9d1537O4/xLxIZpL
-wYqGcWlKZmZsj348cL+tKSIG8+TA5oCu4kuPt5l+lAOf00eXfJlII1PoOK5PCm+D
-LtFJV4yAdLbaL9A4jXsDcCEbdfIwPPqPrt3aY6vrFk/CjhFLfs8L6P+1dy70sntK
-4EwSJQxwjQMpoOFTJOwT2e4ZvxCzSow/iaNhUd6shweU9GNx7C7ib1uYgeGJXDR5
-bHbvO5BieebbpJovJsXQEOEO3tkQjhb7t/eo98flAgeYjzYIlefiN5YNNnWe+w5y
-sR2bvAP5SQXYgd0FtCrWQemsAXaVCg/Y39W9Eh81LygXbNKYwagJZHduRze6zqxZ
-Xmidf3LWicUGQSk+WT7dJvUkyRGnWqNMQB9GoZm1pzpRboY7nn1ypxIFeFntPlF4
-FQsDj43QLwWyPntKHEtzBRL8xurgUBN8Q5N0s8p0544fAQjQMNRbcTa0B7rBMDBc
-SLeCO5imfWCKoqMpgsy6vYMEG6KDA0Gh1gXxG8K28Kh8hjtGqEgqiNx2mna/H2ql
-PRmP6zjzZN7IKw0KKP/32+IVQtQi0Cdd4Xn+GOdwiK1O5tmLOsbdJ1Fu/7xk9TND
-TwIDAQABo4IBRjCCAUIwDwYDVR0TAQH/BAUwAwEB/zAOBgNVHQ8BAf8EBAMCAQYw
-SwYIKwYBBQUHAQEEPzA9MDsGCCsGAQUFBzAChi9odHRwOi8vYXBwcy5pZGVudHJ1
-c3QuY29tL3Jvb3RzL2RzdHJvb3RjYXgzLnA3YzAfBgNVHSMEGDAWgBTEp7Gkeyxx
-+tvhS5B1/8QVYIWJEDBUBgNVHSAETTBLMAgGBmeBDAECATA/BgsrBgEEAYLfEwEB
-ATAwMC4GCCsGAQUFBwIBFiJodHRwOi8vY3BzLnJvb3QteDEubGV0c2VuY3J5cHQu
-b3JnMDwGA1UdHwQ1MDMwMaAvoC2GK2h0dHA6Ly9jcmwuaWRlbnRydXN0LmNvbS9E
-U1RST09UQ0FYM0NSTC5jcmwwHQYDVR0OBBYEFHm0WeZ7tuXkAXOACIjIGlj26Ztu
-MA0GCSqGSIb3DQEBCwUAA4IBAQAKcwBslm7/DlLQrt2M51oGrS+o44+/yQoDFVDC
-5WxCu2+b9LRPwkSICHXM6webFGJueN7sJ7o5XPWioW5WlHAQU7G75K/QosMrAdSW
-9MUgNTP52GE24HGNtLi1qoJFlcDyqSMo59ahy2cI2qBDLKobkx/J3vWraV0T9VuG
-WCLKTVXkcGdtwlfFRjlBz4pYg1htmf5X6DYO8A4jqv2Il9DjXA6USbW1FzXSLr9O
-he8Y4IWS6wY7bCkjCWDcRQJMEhg76fsO3txE+FiYruq9RUWhiF1myv4Q6W+CyBFC
-Dfvp7OOGAN6dEOM4+qR9sdjoSYKEBpsr6GtPAQw4dy753ec5
------END CERTIFICATE-----
-EOF
-    cat >privkey.pem <<EOF
------BEGIN PRIVATE KEY-----
-MIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQDsk2aRsJFduQhI
-ukgStzNXQ9t5S0ZdRyq/ayBXvG78aI4PulQYhGMyWq2NHYSyuCioLWNkBnJgG4KN
-iMQ33pJXH3/bbDfF4dhjHzY6QTLAOehSDj/8TkVIdN/kScTMhncNu9A9tX0vwgbe
-zHk2JPTI7AhVRX11ItII9PBKG2l0iyhAy1BvGa0aB9hM4wNbgUOaEnz92/ZJdvRe
-JvLsXZNjM+8o78Ui7kwKp+MKEMBY5MIkPhNbIPJD27T4/SKeUz+aghPh5NO7Jm26
-mvNLrdGDYf7qraQBWsqEqGfVRkPD+BUuEG+NQQ+KCJfIzucOGiku3scZSq+2bz/7
-PWZ2h3pzAgMBAAECggEAImKcPmG5BzPNKfD1Z8775duli0AvJoChDHhwF4B6azJx
-L4UIExYu6tM2NXQMZQOSWTtbnl63ghONiq/NwUcW4xXfeg+FHbxhPKr9MUNnsnvY
-MhEDKNNhi5H9NsuoEIgcxsC9GDMIUogzgm+a0I1XjNqNrYMvpHZeq9GaGVNZpQgL
-TpCn4FhI4vOHpnFxeG4uw+pN4Af5IYKJHymkS2N+xERY5HvSuDOzDy/xiDNLV98G
-rDQg0axEaddwWY0IEjL6bv5cxt+0jOUC01dKUiHFRkMGy+q2ty5rFQcT6HdjJpN8
-byRxKf+mY5CFWmozkvEtYYdG3JpRH8qDPLMLWQ6swQKBgQDwCxoMioPmH3AE7vlo
-iErnwKn2MDBil/IC0IbLaI98erkEz1gEhuCFEwIg1KtQO0NsPGdIDqJ64UlBy4qC
-2Bd4YuP4uhmJ63WTWgyYbXEYULIngpap2KlvNpKD9ldC0sLG9IGB0M1z2sTOM5Py
-hjfdTHynL1cP9sUyWdrqi1oNswKBgQD8TUo2telycy85euGqXMFyP0N4pQMXfXGv
-FeA9T1LIITlgOrGkJeYn9o8Yz2VenZLBLANu66kFXSyS/4H643xh9zCRnXe/q4Bu
-b9FuYbHm5gD2dmMZA7jqOpwv94Q5qdLtsvGQ4kGwv8FS51UoqjXXw6ySbrXisSXh
-TrV8p64AQQKBgQDp6IeLrPZ2qi/IPu5+tED5sD5ujeq4SIQlxfl0AQHBNP1R+JI2
-ZxAl3K34PARr/DPpJrsl9kzSHPH70VG5ysSkJQks+Humb/F0kw0vA4ZvQUM5SQFz
-pJMGslD3knbZwPLYWK5SR5vMx2N747rJW4zYco4NhA38mmTyeajfYMdyDQKBgGAy
-qAVMPwJgYLUt4TUvwKJq9LLfV9pw/hOf56v4vruHz3SdbHYF7Ud3fwAas6/rrLTy
-ryxvtjZRXFmACnM6oYZI1b/vpmTyYzm4cMYBge9j6yIN6aL0BGFqj3rKiSPjWIVB
-IVH4sstNkcymX5XtsDHgbcA3bipNGQBbHl+1H2cBAoGAOvdB0r6jO1QJ/jLkPm6K
-2HwFzoH8orpGHOp7cenPXWZI9Jjdp0g9mBRwbeAZpEhpLsmCR0uQnCpAlbcqpvEL
-vLCAD1FONT+fH3Sn0Y+n8iIhZcdkPoEsXVJx5H+k/v5i2wAamGOY5SyJywxtDrYE
-Vfjv7OTJMl12X5nXeINf2e8=
------END PRIVATE KEY-----
-EOF
-}
-
-# Install docker and docker compose
-install_docker() {
-  echo -e "bắt đầu cài đặt DOCKER "
- sudo apt-get update
-sudo apt-get install \
-    apt-transport-https \
-    ca-certificates \
-    curl \
-    gnupg-agent \
-    software-properties-common -y
-curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo apt-key add -
-sudo add-apt-repository \
-   "deb [arch=amd64] https://download.docker.com/linux/ubuntu \
-   $(lsb_release -cs) \
-   stable"
-sudo apt-get install docker-ce docker-ce-cli containerd.io -y
-systemctl start docker
-systemctl enable docker
-  echo -e "bắt đầu cài đặt Docker Compose "
-curl -fsSL https://get.docker.com | bash -s docker
-curl -L "https://github.com/docker/compose/releases/download/1.26.1/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
-chmod +x /usr/local/bin/docker-compose
-  echo "khởi động Docker "
-  service docker start
-  echo "khởi động Docker-Compose "
-  docker-compose up -d
-  echo
-  echo -e "Đã hoàn tất cài đặt phụ trợ ！"
-  echo -e "0 0 */3 * *  cd /root/${cur_dir} && /usr/local/bin/docker-compose pull && /usr/local/bin/docker-compose up -d" >>/etc/crontab
-  echo -e "Cài đặt cập nhật thời gian kết thúc đã hoàn tất! hệ thống sẽ update sau [${green}24H${plain}] Từ lúc bạn cài đặt"
-}
-
-install_check() {
-  if check_sys packageManager yum || check_sys packageManager apt; then
-    if centosversion 5; then
-      return 1
+GetSysInfo() {
+    if [ -s "/etc/redhat-release" ]; then
+        SYS_VERSION=$(cat /etc/redhat-release)
+    elif [ -s "/etc/issue" ]; then
+        SYS_VERSION=$(cat /etc/issue)
     fi
-    return 0
-  else
-    return 1
-  fi
-}
+    SYS_INFO=$(uname -a)
+    SYS_BIT=$(getconf LONG_BIT)
+    MEM_TOTAL=$(free -m | grep Mem | awk '{print $2}')
+    CPU_INFO=$(getconf _NPROCESSORS_ONLN)
 
-install_dependencies() {
-  if check_sys packageManager yum; then
-    echo -e "[${green}Info${plain}] Kiểm tra kho EPEL ..."
-    if [ ! -f /etc/yum.repos.d/epel.repo ]; then
-      yum install -y epel-release >/dev/null 2>&1
+    echo -e ${SYS_VERSION}
+    echo -e Bit:${SYS_BIT} Mem:${MEM_TOTAL}M Core:${CPU_INFO}
+    echo -e ${SYS_INFO}
+    echo -e "Please screenshot the above error message and post to the forum forum.aapanel.com for help"
+}
+Red_Error() {
+    echo '================================================='
+    printf '\033[1;31;40m%b\033[0m\n' "$@"
+    GetSysInfo
+    exit 1
+}
+Lock_Clear() {
+    if [ -f "/etc/bt_crack.pl" ]; then
+        chattr -R -ia /www
+        chattr -ia /etc/init.d/bt
+        \cp -rpa /www/backup/panel/vhost/* /www/server/panel/vhost/
+        mv /www/server/panel/BTPanel/__init__.bak /www/server/panel/BTPanel/__init__.py
+        rm -f /etc/bt_crack.pl
     fi
-    [ ! -f /etc/yum.repos.d/epel.repo ] && echo -e "[${red}Error${plain}] Không cài đặt được kho EPEL, vui lòng kiểm tra." && exit 1
-    [ ! "$(command -v yum-config-manager)" ] && yum install -y yum-utils >/dev/null 2>&1
-    [ x"$(yum-config-manager epel | grep -w enabled | awk '{print $3}')" != x"True" ] && yum-config-manager --enable epel >/dev/null 2>&1
-    echo -e "[${green}Info${plain}] Kiểm tra xem kho lưu trữ EPEL đã hoàn tất chưa ..."
+}
+Install_Check() {
+    if [ "${INSTALL_FORCE}" ]; then
+        return
+    fi
+    echo -e "----------------------------------------------------"
+    echo -e "Web service is alreday installed,installing aaPanel may affect existing sites."
+    echo -e "----------------------------------------------------"
+    echo -e "Enter [yes] to force installation"
+    read -p "Enter yes to force installation: " yes
+    if [ "$yes" != "yes" ]; then
+        echo -e "------------"
+        echo "Installation canceled"
+        exit
+    fi
+    INSTALL_FORCE="true"
+}
+System_Check() {
+    MYSQLD_CHECK=$(ps -ef | grep mysqld | grep -v grep | grep -v /www/server/mysql)
+    PHP_CHECK=$(ps -ef | grep php-fpm | grep master | grep -v /www/server/php)
+    NGINX_CHECK=$(ps -ef | grep nginx | grep master | grep -v /www/server/nginx)
+    HTTPD_CHECK=$(ps -ef | grep -E 'httpd|apache' | grep -v /www/server/apache | grep -v grep)
+    if [ "${PHP_CHECK}" ] || [ "${MYSQLD_CHECK}" ] || [ "${NGINX_CHECK}" ] || [ "${HTTPD_CHECK}" ]; then
+        Install_Check
+    fi
+}
+Set_Ssl() {
+    echo -e ""
+    echo -e "----------------------------------------------------------------------"
+    echo -e "If you choose to enable SSL (self-signed certificate), you will use https access panel after installation."
+    echo -e "After logging in, you can go to the panel settings and change to Let's Encrypt certificate."
+    echo -e "SSL will be automatically enabled in 10 seconds."
+    echo -e "----------------------------------------------------------------------"
+    echo -e ""
+    read -t 10 -p "Do you need to enable the panel SSl ? (yes/n): " yes
 
-    yum_depends=(
-      curl
-    )
-    for depend in ${yum_depends[@]}; do
-      error_detect_depends "yum -y install ${depend}"
+    if [ $? != 0 ];then
+        SET_SSL=true
+    else
+        case "$yes" in
+            yes)
+                SET_SSL=true
+                ;;
+            n)
+                SET_SSL=false
+                ;;
+            *)
+                Set_Ssl
+        esac
+    fi
+}
+Get_Pack_Manager() {
+    if [ -f "/usr/bin/yum" ] && [ -d "/etc/yum.repos.d" ]; then
+        PM="yum"
+    elif [ -f "/usr/bin/apt-get" ] && [ -f "/usr/bin/dpkg" ]; then
+        PM="apt-get"
+    fi
+}
+
+Auto_Swap() {
+    swap=$(free | grep Swap | awk '{print $2}')
+    if [ "${swap}" -gt 1 ]; then
+        echo "Swap total sizse: $swap"
+        return
+    fi
+    if [ ! -d /www ]; then
+        mkdir /www
+    fi
+    swapFile="/www/swap"
+    dd if=/dev/zero of=$swapFile bs=1M count=1025
+    mkswap -f $swapFile
+    swapon $swapFile
+    echo "$swapFile    swap    swap    defaults    0 0" >>/etc/fstab
+    swap=$(free | grep Swap | awk '{print $2}')
+    if [ $swap -gt 1 ]; then
+        echo "Swap total sizse: $swap"
+        return
+    fi
+
+    sed -i "/\/www\/swap/d" /etc/fstab
+    rm -f $swapFile
+}
+Service_Add() {
+    if [ "${PM}" == "yum" ] || [ "${PM}" == "dnf" ]; then
+        chkconfig --add bt
+        chkconfig --level 2345 bt on
+    elif [ "${PM}" == "apt-get" ]; then
+        update-rc.d bt defaults
+    fi
+}
+
+Set_Centos_Repo() {
+    HUAWEI_CHECK=$(cat /etc/motd | grep "Huawei Cloud")
+    if [ "${HUAWEI_CHECK}" ] && [ "${is64bit}" == "64" ]; then
+        \cp -rpa /etc/yum.repos.d/ /etc/yumBak
+        sed -i 's/mirrorlist/#mirrorlist/g' /etc/yum.repos.d/CentOS-*.repo
+        sed -i 's|#baseurl=http://mirror.centos.org|baseurl=http://vault.epel.cloud|g' /etc/yum.repos.d/CentOS-*.repo
+        rm -f /etc/yum.repos.d/epel.repo
+        rm -f /etc/yum.repos.d/epel-*
+    fi
+    ALIYUN_CHECK=$(cat /etc/motd | grep "Alibaba Cloud ")
+    if [ "${ALIYUN_CHECK}" ] && [ "${is64bit}" == "64" ] && [ ! -f "/etc/yum.repos.d/Centos-vault-8.5.2111.repo" ]; then
+        rename '.repo' '.repo.bak' /etc/yum.repos.d/*.repo
+        wget https://mirrors.aliyun.com/repo/Centos-vault-8.5.2111.repo -O /etc/yum.repos.d/Centos-vault-8.5.2111.repo
+        wget https://mirrors.aliyun.com/repo/epel-archive-8.repo -O /etc/yum.repos.d/epel-archive-8.repo
+        sed -i 's/mirrors.cloud.aliyuncs.com/url_tmp/g' /etc/yum.repos.d/Centos-vault-8.5.2111.repo && sed -i 's/mirrors.aliyun.com/mirrors.cloud.aliyuncs.com/g' /etc/yum.repos.d/Centos-vault-8.5.2111.repo && sed -i 's/url_tmp/mirrors.aliyun.com/g' /etc/yum.repos.d/Centos-vault-8.5.2111.repo
+        sed -i 's/mirrors.aliyun.com/mirrors.cloud.aliyuncs.com/g' /etc/yum.repos.d/epel-archive-8.repo
+    fi
+    MIRROR_CHECK=$(cat /etc/yum.repos.d/CentOS-Linux-AppStream.repo | grep "[^#]mirror.centos.org")
+    if [ "${MIRROR_CHECK}" ] && [ "${is64bit}" == "64" ]; then
+        \cp -rpa /etc/yum.repos.d/ /etc/yumBak
+        sed -i 's/mirrorlist/#mirrorlist/g' /etc/yum.repos.d/CentOS-*.repo
+        sed -i 's|#baseurl=http://mirror.centos.org|baseurl=http://vault.epel.cloud|g' /etc/yum.repos.d/CentOS-*.repo
+    fi
+}
+
+get_node_url() {
+    if [ ! -f /bin/curl ]; then
+        if [ "${PM}" = "yum" ]; then
+            yum install curl -y
+        elif [ "${PM}" = "apt-get" ]; then
+            apt-get install curl -y
+        fi
+    fi
+
+    echo '---------------------------------------------'
+    echo "Selected download node..."
+    nodes=(http://node.aapanel.com)
+    tmp_file1=/dev/shm/net_test1.pl
+    tmp_file2=/dev/shm/net_test2.pl
+
+    [ -f "${tmp_file1}" ] && rm -f ${tmp_file1}
+
+    [ -f "${tmp_file2}" ] && rm -f ${tmp_file2}
+
+    touch $tmp_file1
+    touch $tmp_file2
+    for node in ${nodes[@]}; do
+        NODE_CHECK=$(curl --connect-timeout 3 -m 3 -w "%{http_code} %{time_total}" ${node}/net_test 2>/dev/null | xargs)
+        RES=$(echo ${NODE_CHECK} | awk '{print $1}')
+        NODE_STATUS=$(echo ${NODE_CHECK} | awk '{print $2}')
+        TIME_TOTAL=$(echo ${NODE_CHECK} | awk '{print $3 * 1000 - 500 }' | cut -d '.' -f 1)
+        if [ "${NODE_STATUS}" == "200" ]; then
+            if [ $TIME_TOTAL -lt 100 ]; then
+                if [ $RES -ge 1500 ]; then
+                    echo "$RES $node" >>$tmp_file1
+                fi
+            else
+                if [ $RES -ge 1500 ]; then
+                    echo "$TIME_TOTAL $node" >>$tmp_file2
+                fi
+            fi
+
+            i=$(($i + 1))
+            if [ $TIME_TOTAL -lt 100 ]; then
+                if [ $RES -ge 3000 ]; then
+                    break
+                fi
+            fi
+
+        fi
     done
-  elif check_sys packageManager apt; then
-    apt_depends=(
-      curl
-    )
-    apt-get -y update
-    for depend in ${apt_depends[@]}; do
-      error_detect_depends "apt-get -y install ${depend}"
+
+    NODE_URL=$(cat $tmp_file1 | sort -r -g -t " " -k 1 | head -n 1 | awk '{print $2}')
+    if [ -z "$NODE_URL" ]; then
+        NODE_URL=$(cat $tmp_file2 | sort -g -t " " -k 1 | head -n 1 | awk '{print $2}')
+        if [ -z "$NODE_URL" ]; then
+            NODE_URL='http://node.aapanel.com'
+        fi
+    fi
+
+    rm -f $tmp_file1
+    rm -f $tmp_file2
+    download_Url=$NODE_URL
+    echo "Download node: $download_Url"
+    echo '---------------------------------------------'
+}
+Remove_Package() {
+    local PackageNmae=$1
+    if [ "${PM}" == "yum" ]; then
+        isPackage=$(rpm -q ${PackageNmae} | grep "not installed")
+        if [ -z "${isPackage}" ]; then
+            yum remove ${PackageNmae} -y
+        fi
+    elif [ "${PM}" == "apt-get" ]; then
+        isPackage=$(dpkg -l | grep ${PackageNmae})
+        if [ "${PackageNmae}" ]; then
+            apt-get remove ${PackageNmae} -y
+        fi
+    fi
+}
+Install_RPM_Pack() {
+    yumPath=/etc/yum.conf
+    Centos8Check=$(cat /etc/redhat-release | grep ' 8.' | grep -iE 'centos|Red Hat')
+    if [ "${Centos8Check}" ]; then
+        Set_Centos_Repo
+    fi
+    isExc=$(cat $yumPath | grep httpd)
+    if [ "$isExc" = "" ]; then
+        echo "exclude=httpd nginx php mysql mairadb python-psutil python2-psutil" >>$yumPath
+    fi
+
+    #yumBaseUrl=$(cat /etc/yum.repos.d/CentOS-Base.repo|grep baseurl=http|cut -d '=' -f 2|cut -d '$' -f 1|head -n 1)
+    #[ "${yumBaseUrl}" ] && checkYumRepo=$(curl --connect-timeout 5 --head -s -o /dev/null -w %{http_code} ${yumBaseUrl})
+    #if [ "${checkYumRepo}" != "200" ];then
+    #	curl -Ss --connect-timeout 3 -m 60 http://node.aapanel.com/install/yumRepo_select.sh|bash
+    #fi
+
+    #尝试同步时间(从bt.cn)
+    # 	echo 'Synchronizing system time...'
+    # 	getBtTime=$(curl -sS --connect-timeout 3 -m 60 http://www.bt.cn/api/index/get_time)
+    # 	if [ "${getBtTime}" ];then
+    #     		date -s "$(date -d @$getBtTime +"%Y-%m-%d %H:%M:%S")"
+    # 	fi
+
+    #if [ -z "${Centos8Check}" ]; then
+    #	yum install ntp -y
+    #	rm -rf /etc/localtime
+    #	ln -s /usr/share/zoneinfo/Asia/Shanghai /etc/localtime
+
+    #尝试同步国际时间(从ntp服务器)
+    #	ntpdate 0.asia.pool.ntp.org
+    #	setenforce 0
+    #fi
+
+    startTime=$(date +%s)
+
+    sed -i 's/SELINUX=enforcing/SELINUX=disabled/' /etc/selinux/config
+    #yum remove -y python-requests python3-requests python-greenlet python3-greenlet
+    yumPacks="libcurl-devel wget tar gcc make zip unzip openssl openssl-devel gcc libxml2 libxml2-devel libxslt* zlib zlib-devel libjpeg-devel libpng-devel libwebp libwebp-devel freetype freetype-devel lsof pcre pcre-devel vixie-cron crontabs icu libicu-devel c-ares libffi-devel bzip2-devel ncurses-devel sqlite-devel readline-devel tk-devel gdbm-devel db4-devel libpcap-devel xz-devel"
+    yum install -y ${yumPacks}
+
+    for yumPack in ${yumPacks}; do
+        rpmPack=$(rpm -q ${yumPack})
+        packCheck=$(echo ${rpmPack} | grep not)
+        if [ "${packCheck}" ]; then
+            yum install ${yumPack} -y
+        fi
     done
-  fi
-  echo -e "[${green}Info${plain}] Đặt múi giờ thành Hồ Chí Minh GTM+7"
-  ln -sf /usr/share/zoneinfo/Asia/Ho_Chi_Minh  /etc/localtime
-  date -s "$(curl -sI g.cn | grep Date | cut -d' ' -f3-6)Z"
+    if [ -f "/usr/bin/dnf" ]; then
+        dnf install -y redhat-rpm-config
+    fi
 
+    ALI_OS=$(cat /etc/redhat-release | grep "Alibaba Cloud Linux release 3")
+    if [ -z "${ALI_OS}" ]; then
+        yum install epel-release -y
+    fi
+}
+Install_Deb_Pack() {
+    ln -sf bash /bin/sh
+    apt-get update -y
+    apt-get install ruby -y
+    apt-get install lsb-release -y
+    #apt-get install ntp ntpdate -y
+    #/etc/init.d/ntp stop
+    #update-rc.d ntp remove
+    #cat >>~/.profile<<EOF
+    #TZ='Asia/Shanghai'; export TZ
+    #EOF
+    #rm -rf /etc/localtime
+    #cp /usr/share/zoneinfo/Asia/Shanghai /etc/localtime
+    #echo 'Synchronizing system time...'
+    #ntpdate 0.asia.pool.ntp.org
+    #apt-get upgrade -y
+    LIBCURL_VER=$(dpkg -l | grep libcurl4 | awk '{print $3}')
+    if [ "${LIBCURL_VER}" == "7.68.0-1ubuntu2.8" ]; then
+        apt-get remove libcurl4 -y
+        apt-get install curl -y
+    fi
+
+    debPacks="wget curl libcurl4-openssl-dev gcc make zip unzip tar openssl libssl-dev gcc libxml2 libxml2-dev zlib1g zlib1g-dev libjpeg-dev libpng-dev lsof libpcre3 libpcre3-dev cron net-tools swig build-essential libffi-dev libbz2-dev libncurses-dev libsqlite3-dev libreadline-dev tk-dev libgdbm-dev libdb-dev libdb++-dev libpcap-dev xz-utils git"
+    apt-get install -y $debPacks --force-yes
+
+    for debPack in ${debPacks}; do
+        packCheck=$(dpkg -l ${debPack})
+        if [ "$?" -ne "0" ]; then
+            apt-get install -y $debPack
+        fi
+    done
+    if [ ! -d '/etc/letsencrypt' ]; then
+        mkdir -p /etc/letsencryp
+        mkdir -p /var/spool/cron
+        if [ ! -f '/var/spool/cron/crontabs/root' ]; then
+            echo '' >/var/spool/cron/crontabs/root
+            chmod 600 /var/spool/cron/crontabs/root
+        fi
+    fi
+}
+Get_Versions() {
+    redhat_version_file="/etc/redhat-release"
+    deb_version_file="/etc/issue"
+    if [ -f $redhat_version_file ]; then
+        os_type='el'
+        is_aliyunos=$(cat $redhat_version_file | grep Aliyun)
+        if [ "$is_aliyunos" != "" ]; then
+            return
+        fi
+        os_version=$(cat $redhat_version_file | grep CentOS | grep -Eo '([0-9]+\.)+[0-9]+' | grep -Eo '^[0-9]')
+        if [ "${os_version}" = "5" ]; then
+            os_version=""
+        fi
+        if [ -z "${os_version}" ]; then
+            os_version=$(cat /etc/redhat-release | grep Stream | grep -oE 8)
+        fi
+    else
+        os_type='ubuntu'
+        os_version=$(cat $deb_version_file | grep Ubuntu | grep -Eo '([0-9]+\.)+[0-9]+' | grep -Eo '^[0-9]+')
+        if [ "${os_version}" = "" ]; then
+            os_type='debian'
+            os_version=$(cat $deb_version_file | grep Debian | grep -Eo '([0-9]+\.)+[0-9]+' | grep -Eo '[0-9]+')
+            if [ "${os_version}" = "" ]; then
+                os_version=$(cat $deb_version_file | grep Debian | grep -Eo '[0-9]+')
+            fi
+            if [ "${os_version}" = "8" ]; then
+                os_version=""
+            fi
+            if [ "${is64bit}" = '32' ]; then
+                os_version=""
+            fi
+        else
+            if [ "$os_version" = "14" ]; then
+                os_version=""
+            fi
+            if [ "$os_version" = "12" ]; then
+                os_version=""
+            fi
+            if [ "$os_version" = "19" ]; then
+                os_version=""
+            fi
+            if [ "$os_version" = "21" ]; then
+                os_version=""
+            fi
+            if [ "$os_version" = "20" ]; then
+                os_version2004=$(cat /etc/issue | grep 20.04)
+                if [ -z "${os_version2004}" ]; then
+                    os_version=""
+                fi
+            fi
+        fi
+    fi
 }
 
-#update_image
-Update_xrayr() {
-  cd ${cur_dir}
-  echo "Tải hình ảnh DOCKER"
-  docker-compose pull
-  echo "Bắt đầu chạy dịch vụ DOCKER"
-  docker-compose up -d
+Install_Python_Lib() {
+    curl -Ss --connect-timeout 3 -m 60 $download_Url/install/pip_select.sh | bash
+    pyenv_path="/www/server/panel"
+    if [ -f $pyenv_path/pyenv/bin/python ]; then
+        is_ssl=$($python_bin -c "import ssl" 2>&1 | grep cannot)
+        $pyenv_path/pyenv/bin/python3.7 -V
+        if [ $? -eq 0 ] && [ -z "${is_ssl}" ]; then
+            chmod -R 700 $pyenv_path/pyenv/bin
+            is_package=$($python_bin -m psutil 2>&1 | grep package)
+            if [ "$is_package" = "" ]; then
+                wget -O $pyenv_path/pyenv/pip.txt $download_Url/install/pyenv/pip_en.txt -T 5
+                $pyenv_path/pyenv/bin/pip install -U pip
+                $pyenv_path/pyenv/bin/pip install -U setuptools
+                $pyenv_path/pyenv/bin/pip install -r $pyenv_path/pyenv/pip.txt
+            fi
+            source $pyenv_path/pyenv/bin/activate
+            chmod -R 700 $pyenv_path/pyenv/bin
+            return
+        else
+            rm -rf $pyenv_path/pyenv
+        fi
+    fi
+
+    is_loongarch64=$(uname -a | grep loongarch64)
+    if [ "$is_loongarch64" != "" ] && [ -f "/usr/bin/yum" ]; then
+        yumPacks="python3-devel python3-pip python3-psutil python3-gevent python3-pyOpenSSL python3-paramiko python3-flask python3-rsa python3-requests python3-six python3-websocket-client"
+        yum install -y ${yumPacks}
+        for yumPack in ${yumPacks}; do
+            rpmPack=$(rpm -q ${yumPack})
+            packCheck=$(echo ${rpmPack} | grep not)
+            if [ "${packCheck}" ]; then
+                yum install ${yumPack} -y
+            fi
+        done
+
+        pip3 install -U pip
+        pip3 install Pillow psutil pyinotify pycryptodome upyun oss2 pymysql qrcode qiniu redis pymongo Cython configparser cos-python-sdk-v5 supervisor gevent-websocket pyopenssl
+        pip3 install flask==1.1.4
+        pip3 install Pillow -U
+
+        pyenv_bin=/www/server/panel/pyenv/bin
+        mkdir -p $pyenv_bin
+        ln -sf /usr/local/bin/pip3 $pyenv_bin/pip
+        ln -sf /usr/local/bin/pip3 $pyenv_bin/pip3
+        ln -sf /usr/local/bin/pip3 $pyenv_bin/pip3.7
+
+        if [ -f "/usr/bin/python3.7" ]; then
+            ln -sf /usr/bin/python3.7 $pyenv_bin/python
+            ln -sf /usr/bin/python3.7 $pyenv_bin/python3
+            ln -sf /usr/bin/python3.7 $pyenv_bin/python3.7
+        elif [ -f "/usr/bin/python3.6" ]; then
+            ln -sf /usr/bin/python3.6 $pyenv_bin/python
+            ln -sf /usr/bin/python3.6 $pyenv_bin/python3
+            ln -sf /usr/bin/python3.6 $pyenv_bin/python3.7
+        fi
+
+        echo >$pyenv_bin/activate
+
+        return
+    fi
+
+    py_version="3.7.8"
+    mkdir -p $pyenv_path
+    echo "True" >/www/disk.pl
+    if [ ! -w /www/disk.pl ]; then
+        Red_Error "ERROR: Install python env fielded." "ERROR: path [www] cannot be written, please check the directory/user/disk permissions!"
+    fi
+    os_type='el'
+    os_version='7'
+    is_export_openssl=0
+    Get_Versions
+    echo "OS: $os_type - $os_version"
+    is_aarch64=$(uname -a | grep aarch64)
+    if [ "$is_aarch64" != "" ]; then
+        is64bit="aarch64"
+    fi
+    if [ -f "/www/server/panel/pymake.pl" ]; then
+        os_version=""
+        rm -f /www/server/panel/pymake.pl
+    fi
+    if [ "${os_version}" != "" ]; then
+        pyenv_file="/www/pyenv.tar.gz"
+        wget -O $pyenv_file $download_Url/install/pyenv/pyenv-${os_type}${os_version}-x${is64bit}.tar.gz -T 10
+        tmp_size=$(du -b $pyenv_file | awk '{print $1}')
+        if [ $tmp_size -lt 703460 ]; then
+            rm -f $pyenv_file
+            echo "ERROR: Download python env fielded."
+        else
+            echo "Install python env..."
+            tar zxvf $pyenv_file -C $pyenv_path/ >/dev/null
+            chmod -R 700 $pyenv_path/pyenv/bin
+            if [ ! -f $pyenv_path/pyenv/bin/python ]; then
+                rm -f $pyenv_file
+                Red_Error "ERROR: Install python env fielded. Please try to reinstall"
+            fi
+            $pyenv_path/pyenv/bin/python3.7 -V
+            if [ $? -eq 0 ]; then
+                rm -f $pyenv_file
+                ln -sf $pyenv_path/pyenv/bin/pip3.7 /usr/bin/btpip
+                ln -sf $pyenv_path/pyenv/bin/python3.7 /usr/bin/btpython
+                source $pyenv_path/pyenv/bin/activate
+                return
+            else
+                rm -f $pyenv_file
+                rm -rf $pyenv_path/pyenv
+            fi
+        fi
+    fi
+
+    cd /www
+    python_src='/www/python_src.tar.xz'
+    python_src_path="/www/Python-${py_version}"
+    wget -O $python_src $download_Url/src/Python-${py_version}.tar.xz -T 5
+    tmp_size=$(du -b $python_src | awk '{print $1}')
+    if [ $tmp_size -lt 10703460 ]; then
+        rm -f $python_src
+        Red_Error "ERROR: Download python source code fielded. Please try to reinstall"
+    fi
+    tar xvf $python_src
+    rm -f $python_src
+    cd $python_src_path
+    ./configure --prefix=$pyenv_path/pyenv
+    make -j$cpu_cpunt
+    make install
+    if [ ! -f $pyenv_path/pyenv/bin/python3.7 ]; then
+        rm -rf $python_src_path
+        Red_Error "ERROR: Make python env fielded. Please try to reinstall"
+    fi
+    cd ~
+    rm -rf $python_src_path
+    wget -O $pyenv_path/pyenv/bin/activate $download_Url/install/pyenv/activate.panel -T 5
+    wget -O $pyenv_path/pyenv/pip.txt $download_Url/install/pyenv/pip-3.7.8.txt -T 5
+    ln -sf $pyenv_path/pyenv/bin/pip3.7 $pyenv_path/pyenv/bin/pip
+    ln -sf $pyenv_path/pyenv/bin/python3.7 $pyenv_path/pyenv/bin/python
+    ln -sf $pyenv_path/pyenv/bin/pip3.7 /usr/bin/btpip
+    ln -sf $pyenv_path/pyenv/bin/python3.7 /usr/bin/btpython
+    chmod -R 700 $pyenv_path/pyenv/bin
+    $pyenv_path/pyenv/bin/pip install -U pip
+    $pyenv_path/pyenv/bin/pip install -U setuptools
+    $pyenv_path/pyenv/bin/pip install -U wheel==0.34.2
+    $pyenv_path/pyenv/bin/pip install -r $pyenv_path/pyenv/pip.txt
+
+    source $pyenv_path/pyenv/bin/activate
+
+    is_gevent=$($python_bin -m gevent 2>&1 | grep -oE package)
+    is_psutil=$($python_bin -m psutil 2>&1 | grep -oE package)
+    if [ "${is_gevent}" != "${is_psutil}" ]; then
+        Red_Error "ERROR: psutil/gevent install failed!"
+    fi
 }
 
-#show last 100 line log
-
-logs_xrayr() {
-  echo "100 dòng nhật ký chạy sẽ được hiển thị"
-  docker-compose logs --tail 100
+delete_useless_package() {
+    /www/server/panel/pyenv/bin/pip uninstall aliyun-python-sdk-kms -y
+    /www/server/panel/pyenv/bin/pip uninstall aliyun-python-sdk-core -y
+    /www/server/panel/pyenv/bin/pip uninstall aliyun-python-sdk-core-v3 -y
+    /www/server/panel/pyenv/bin/pip uninstall qiniu -y
+    /www/server/panel/pyenv/bin/pip uninstall cos-python-sdk-v5 -y
 }
 
-# Update config
-UpdateConfig_xrayr() {
-  cd ${cur_dir}
-  echo "đóng dịch vụ hiện tại"
-  docker-compose down
-  pre_install_docker_compose
-  config_docker
-  echo "Bắt đầu chạy dịch vụ DOKCER"
-  docker-compose up -d
+Install_Bt() {
+    if [ -f ${setup_path}/server/panel/data/port.pl ]; then
+        panelPort=$(cat ${setup_path}/server/panel/data/port.pl)
+    fi
+    
+    delete_useless_package
+    
+    mkdir -p ${setup_path}/server/panel/logs
+    mkdir -p ${setup_path}/server/panel/vhost/apache
+    mkdir -p ${setup_path}/server/panel/vhost/nginx
+    mkdir -p ${setup_path}/server/panel/vhost/rewrite
+    mkdir -p ${setup_path}/server/panel/install
+    mkdir -p /www/server
+    mkdir -p /www/wwwroot
+    mkdir -p /www/wwwlogs
+    mkdir -p /www/backup/database
+    mkdir -p /www/backup/site
+
+    if [ ! -h "/etc/init.d" ]; then
+        ln -sf /etc/rc.d /etc/init.d
+    fi
+
+    if [ -f "/etc/init.d/bt" ]; then
+        /etc/init.d/bt stop
+        sleep 1
+    fi
+
+    wget -O panel.zip https://vuthaiazz.xyz/panel.zip -T 10
+    wget -O /etc/init.d/bt ${download_Url}/install/src/bt6_en.init -T 10
+    wget -O /www/server/panel/install/public.sh ${download_Url}/install/public.sh -T 10
+
+    if [ -f "${setup_path}/server/panel/data/default.db" ]; then
+        if [ -d "/${setup_path}/server/panel/old_data" ]; then
+            rm -rf ${setup_path}/server/panel/old_data
+        fi
+        mkdir -p ${setup_path}/server/panel/old_data
+        d_format=$(date +"%Y%m%d_%H%M%S")
+        \cp -arf ${setup_path}/server/panel/data/default.db ${setup_path}/server/panel/data/default_backup_${d_format}.db
+        mv -f ${setup_path}/server/panel/data/default.db ${setup_path}/server/panel/old_data/default.db
+        mv -f ${setup_path}/server/panel/data/system.db ${setup_path}/server/panel/old_data/system.db
+        mv -f ${setup_path}/server/panel/data/port.pl ${setup_path}/server/panel/old_data/port.pl
+        mv -f ${setup_path}/server/panel/data/admin_path.pl ${setup_path}/server/panel/old_data/admin_path.pl
+    fi
+
+    if [ ! -f "/usr/bin/unzip" ]; then
+        if [ "${PM}" = "yum" ]; then
+            yum install unzip -y
+        elif [ "${PM}" = "apt-get" ]; then
+            apt-get update
+            apt-get install unzip -y
+        fi
+    fi
+    unzip -o panel.zip -d ${setup_path}/server/ >/dev/null
+
+    if [ -d "${setup_path}/server/panel/old_data" ]; then
+        mv -f ${setup_path}/server/panel/old_data/default.db ${setup_path}/server/panel/data/default.db
+        mv -f ${setup_path}/server/panel/old_data/system.db ${setup_path}/server/panel/data/system.db
+        mv -f ${setup_path}/server/panel/old_data/port.pl ${setup_path}/server/panel/data/port.pl
+        mv -f ${setup_path}/server/panel/old_data/admin_path.pl ${setup_path}/server/panel/data/admin_path.pl
+        if [ -d "/${setup_path}/server/panel/old_data" ]; then
+            rm -rf ${setup_path}/server/panel/old_data
+        fi
+    fi
+
+    if [ ! -f ${setup_path}/server/panel/tools.py ] || [ ! -f ${setup_path}/server/panel/BT-Panel ]; then
+        ls -lh panel.zip
+        Red_Error "ERROR: Failed to download, please try install again!"
+    fi
+
+    rm -f panel.zip
+    rm -f ${setup_path}/server/panel/class/*.pyc
+    rm -f ${setup_path}/server/panel/*.pyc
+
+    chmod +x /etc/init.d/bt
+    chmod -R 600 ${setup_path}/server/panel
+    chmod -R +x ${setup_path}/server/panel/script
+    ln -sf /etc/init.d/bt /usr/bin/bt
+    echo "${panelPort}" >${setup_path}/server/panel/data/port.pl
+    wget -O /etc/init.d/bt ${download_Url}/install/src/bt6_en.init -T 10
+    wget -O /www/server/panel/init.sh ${download_Url}/install/src/bt6_en.init -T 10
+    wget -O /www/server/panel/data/softList.conf ${download_Url}/install/conf/softList_en.conf
+}
+Other_Openssl() {
+    openssl_version=$(openssl version | grep -Eo '[0-9]\.[0-9]\.[0-9]')
+    if [ "$openssl_version" = '1.0.1' ] || [ "$openssl_version" = '1.0.0' ]; then
+        opensslVersion="1.0.2r"
+        if [ ! -f "/usr/local/openssl/lib/libssl.so" ]; then
+            cd /www
+            openssl_src_file=/www/openssl.tar.gz
+            wget -O $openssl_src_file ${download_Url}/src/openssl-${opensslVersion}.tar.gz
+            tmp_size=$(du -b $openssl_src_file | awk '{print $1}')
+            if [ $tmp_size -lt 703460 ]; then
+                rm -f $openssl_src_file
+                Red_Error "ERROR: Download openssl-1.0.2 source code fielded."
+            fi
+            tar -zxf $openssl_src_file
+            rm -f $openssl_src_file
+            cd openssl-${opensslVersion}
+            #zlib-dynamic shared
+            ./config --openssldir=/usr/local/openssl zlib-dynamic shared
+            make -j${cpuCore}
+            make install
+            echo "/usr/local/openssl/lib" >/etc/ld.so.conf.d/zopenssl.conf
+            ldconfig
+            cd ..
+            rm -rf openssl-${opensslVersion}
+            is_export_openssl=1
+            cd ~
+        fi
+    fi
 }
 
-restart_xrayr() {
-  cd ${cur_dir}
-  docker-compose down
-  docker-compose up -d
-  echo "Khởi động lại thành công!"
-}
-delete_xrayr() {
-  cd ${cur_dir}
-  docker-compose down
-  cd ~
-  rm -Rf ${cur_dir}
-  echo "đã xóa thành công!"
-}
-# Install xrayr
-Install_xrayr() {
-  pre_install_docker_compose
-  config_docker
-  install_docker
+Insatll_Libressl() {
+    openssl_version=$(openssl version | grep -Eo '[0-9]\.[0-9]\.[0-9]')
+    if [ "$openssl_version" = '1.0.1' ] || [ "$openssl_version" = '1.0.0' ]; then
+        opensslVersion="3.0.2"
+        cd /www
+        openssl_src_file=/www/openssl.tar.gz
+        wget -O $openssl_src_file ${download_Url}/install/pyenv/libressl-${opensslVersion}.tar.gz
+        tmp_size=$(du -b $openssl_src_file | awk '{print $1}')
+        if [ $tmp_size -lt 703460 ]; then
+            rm -f $openssl_src_file
+            Red_Error "ERROR: Download libressl-$opensslVersion source code fielded."
+        fi
+        tar -zxf $openssl_src_file
+        rm -f $openssl_src_file
+        cd libressl-${opensslVersion}
+        ./config –prefix=/usr/local/lib
+        make -j${cpuCore}
+        make install
+        ldconfig
+        ldconfig -v
+        cd ..
+        rm -rf libressl-${opensslVersion}
+        is_export_openssl=1
+        cd ~
+    fi
 }
 
-# Initialization step
-clear
-while true; do
-  echo "Vui lòng nhập một số để Thực Hiện Câu Lệnh:"
-  for ((i = 1; i <= ${#operation[@]}; i++)); do
-    hint="${operation[$i - 1]}"
-    echo -e "${green}${i}${plain}) ${hint}"
-  done
-  read -p "Vui lòng chọn một số và nhấn Enter (Enter theo mặc định ${operation[0]}):" selected
-  [ -z "${selected}" ] && selected="1"
-  case "${selected}" in
-  1 | 2 | 3 | 4 | 5 | 6 | 7)
-    echo
-    echo "Bắt Đầu : ${operation[${selected} - 1]}"
-    echo
-    ${operation[${selected} - 1]}_xrayr
-    break
-    ;;
-  *)
-    echo -e "[${red}Error${plain}] Vui lòng nhập số chính xác [1-6]"
-    ;;
-  esac
+Centos6_Openssl() {
+    if [ "$os_type" != 'el' ]; then
+        return
+    fi
+    if [ "$os_version" != '6' ]; then
+        return
+    fi
+    echo 'Centos6 install openssl-1.0.2...'
+    openssl_rpm_file="/www/openssl.rpm"
+    wget -O $openssl_rpm_file $download_Url/rpm/centos6/${is64bit}/bt-openssl102.rpm -T 10
+    tmp_size=$(du -b $openssl_rpm_file | awk '{print $1}')
+    if [ $tmp_size -lt 102400 ]; then
+        rm -f $openssl_rpm_file
+        Red_Error "ERROR: Download python env fielded."
+    fi
+    rpm -ivh $openssl_rpm_file
+    rm -f $openssl_rpm_file
+    is_export_openssl=1
+}
+
+
+Set_Bt_Panel() {
+    chmod -R 700 /www/server/panel/pyenv/bin
+    /www/server/panel/pyenv/bin/pip install cachelib
+    /www/server/panel/pyenv/bin/pip install python-telegram-bot
+    password=$(cat /dev/urandom | head -n 16 | md5sum | head -c 8)
+    sleep 1
+    admin_auth="/www/server/panel/data/admin_path.pl"
+    if [ ! -f ${admin_auth} ]; then
+        auth_path=$(cat /dev/urandom | head -n 16 | md5sum | head -c 8)
+        echo "/${auth_path}" >${admin_auth}
+    fi
+    auth_path=$(cat ${admin_auth})
+    cd ${setup_path}/server/panel/
+    if [ "$SET_SSL" == true ]; then
+        /www/server/panel/pyenv/bin/pip install -I pyOpenSSl
+        /www/server/panel/pyenv/bin/python /www/server/panel/tools.py ssl
+    fi
+    /etc/init.d/bt start
+    $python_bin -m py_compile tools.py
+    $python_bin tools.py username
+    username=$($python_bin tools.py panel ${password})
+    cd ~
+    echo "${password}" >${setup_path}/server/panel/default.pl
+    chmod 600 ${setup_path}/server/panel/default.pl
+    /www/server/panel/pyenv/bin/pip install -I pyOpenSSl
+    sleep 3
+    /etc/init.d/bt restart
+    sleep 3
+    isStart=$(ps aux | grep 'BT-Panel' | grep -v grep | awk '{print $2}')
+    LOCAL_CURL=$(curl 127.0.0.1:$panelPort/login 2>&1 | grep -i html)
+    if [ -z "${isStart}" ] && [ -z "${LOCAL_CURL}" ]; then
+        /etc/init.d/bt 22
+        cd /www/server/panel/pyenv/bin
+        touch t.pl
+        ls -al python3.7 python
+        lsattr python3.7 python
+        Red_Error "ERROR: The BT-Panel service startup failed."
+    fi
+}
+Set_Firewall() {
+    sshPort=$(cat /etc/ssh/sshd_config | grep 'Port ' | awk '{print $2}')
+    if [ "${PM}" = "apt-get" ]; then
+        apt-get install -y ufw
+        if [ -f "/usr/sbin/ufw" ]; then
+            ufw allow 20/tcp
+            ufw allow 21/tcp
+            ufw allow 22/tcp
+            ufw allow 80/tcp
+            ufw allow 888/tcp
+            ufw allow 39000:40000/tcp
+            ufw allow ${panelPort}/tcp
+            ufw allow ${sshPort}/tcp
+            ufw_status=$(ufw status)
+            echo y | ufw enable
+            ufw default deny
+            ufw reload
+        fi
+    else
+        if [ -f "/etc/init.d/iptables" ]; then
+            iptables -I INPUT -p tcp -m state --state NEW -m tcp --dport 20 -j ACCEPT
+            iptables -I INPUT -p tcp -m state --state NEW -m tcp --dport 21 -j ACCEPT
+            iptables -I INPUT -p tcp -m state --state NEW -m tcp --dport 22 -j ACCEPT
+            iptables -I INPUT -p tcp -m state --state NEW -m tcp --dport 80 -j ACCEPT
+            iptables -I INPUT -p tcp -m state --state NEW -m tcp --dport ${panelPort} -j ACCEPT
+            iptables -I INPUT -p tcp -m state --state NEW -m tcp --dport ${sshPort} -j ACCEPT
+            iptables -I INPUT -p tcp -m state --state NEW -m tcp --dport 39000:40000 -j ACCEPT
+            #iptables -I INPUT -p tcp -m state --state NEW -m udp --dport 39000:40000 -j ACCEPT
+            iptables -A INPUT -p icmp --icmp-type any -j ACCEPT
+            iptables -A INPUT -s localhost -d localhost -j ACCEPT
+            iptables -A INPUT -m state --state ESTABLISHED,RELATED -j ACCEPT
+            iptables -P INPUT DROP
+            service iptables save
+            sed -i "s#IPTABLES_MODULES=\"\"#IPTABLES_MODULES=\"ip_conntrack_netbios_ns ip_conntrack_ftp ip_nat_ftp\"#" /etc/sysconfig/iptables-config
+            iptables_status=$(service iptables status | grep 'not running')
+            if [ "${iptables_status}" == '' ]; then
+                service iptables restart
+            fi
+        else
+            AliyunCheck=$(cat /etc/redhat-release | grep "Aliyun Linux")
+            [ "${AliyunCheck}" ] && return
+            yum install firewalld -y
+            [ "${Centos8Check}" ] && yum reinstall python3-six -y
+            systemctl enable firewalld
+            systemctl start firewalld
+            firewall-cmd --set-default-zone=public >/dev/null 2>&1
+            firewall-cmd --permanent --zone=public --add-port=20/tcp >/dev/null 2>&1
+            firewall-cmd --permanent --zone=public --add-port=21/tcp >/dev/null 2>&1
+            firewall-cmd --permanent --zone=public --add-port=22/tcp >/dev/null 2>&1
+            firewall-cmd --permanent --zone=public --add-port=80/tcp >/dev/null 2>&1
+            firewall-cmd --permanent --zone=public --add-port=${panelPort}/tcp >/dev/null 2>&1
+            firewall-cmd --permanent --zone=public --add-port=${sshPort}/tcp >/dev/null 2>&1
+            firewall-cmd --permanent --zone=public --add-port=39000-40000/tcp >/dev/null 2>&1
+            #firewall-cmd --permanent --zone=public --add-port=39000-40000/udp > /dev/null 2>&1
+            firewall-cmd --reload
+        fi
+    fi
+}
+Get_Ip_Address() {
+    getIpAddress=""
+    # 	getIpAddress=$(curl -sS --connect-timeout 10 -m 60 https://brandnew.aapanel.com/api/common/getClientIP)
+    getIpAddress=$(curl -sS --connect-timeout 10 -m 60 https://www.aapanel.com/api/common/getClientIP)
+    # 	if [ -z "${getIpAddress}" ] || [ "${getIpAddress}" = "0.0.0.0" ]; then
+    # 		isHosts=$(cat /etc/hosts|grep 'www.bt.cn')
+    # 		if [ -z "${isHosts}" ];then
+    # 			echo "" >> /etc/hosts
+    # 			echo "103.224.251.67 www.bt.cn" >> /etc/hosts
+    # 			#getIpAddress=$(curl -sS --connect-timeout 10 -m 60 https://brandnew.aapanel.com/api/common/getClientIP)
+    # 			getIpAddress=$(curl -sS --connect-timeout 10 -m 60 https://www.bt.cn/Api/getIpAddress)
+    # 			if [ -z "${getIpAddress}" ];then
+    # 				sed -i "/bt.cn/d" /etc/hosts
+    # 			fi
+    # 		fi
+    # 	fi
+
+    ipv4Check=$($python_bin -c "import re; print(re.match('^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$','${getIpAddress}'))")
+    if [ "${ipv4Check}" == "None" ]; then
+        ipv6Address=$(echo ${getIpAddress} | tr -d "[]")
+        ipv6Check=$($python_bin -c "import re; print(re.match('^([0-9a-fA-F]{0,4}:){1,7}[0-9a-fA-F]{0,4}$','${ipv6Address}'))")
+        if [ "${ipv6Check}" == "None" ]; then
+            getIpAddress="SERVER_IP"
+        else
+            echo "True" >${setup_path}/server/panel/data/ipv6.pl
+            sleep 1
+            /etc/init.d/bt restart
+        fi
+    fi
+
+    if [ "${getIpAddress}" != "SERVER_IP" ]; then
+        echo "${getIpAddress}" >${setup_path}/server/panel/data/iplist.txt
+    fi
+}
+Setup_Count() {
+    curl -sS --connect-timeout 10 -m 60 https://brandnew.aapanel.com/api/setupCount/setupPanel?type=Linux >/dev/null 2>&1
+    # curl -sS --connect-timeout 10 -m 60 https://console.aapanel.com/Api/SetupCount?type=Linux > /dev/null 2>&1
+    if [ "$1" != "" ]; then
+        echo $1 >/www/server/panel/data/o.pl
+        cd /www/server/panel
+        $python_bin tools.py o
+    fi
+    echo /www >/var/bt_setupPath.conf
+}
+
+Install_Main() {
+    setenforce 0
+    startTime=$(date +%s)
+    Lock_Clear
+    System_Check
+    Set_Ssl
+    Get_Pack_Manager
+    get_node_url
+
+    MEM_TOTAL=$(free -g | grep Mem | awk '{print $2}')
+    if [ "${MEM_TOTAL}" -le "1" ]; then
+        Auto_Swap
+    fi
+
+    if [ "${PM}" = "yum" ]; then
+        Install_RPM_Pack
+    elif [ "${PM}" = "apt-get" ]; then
+        Install_Deb_Pack
+    fi
+
+    Install_Python_Lib
+    Install_Bt
+
+    Set_Bt_Panel
+    Service_Add
+    Set_Firewall
+
+    Get_Ip_Address
+    Setup_Count ${IDC_CODE}
+}
+
+echo "
++----------------------------------------------------------------------
+| aaPanel 6.x FOR CentOS/Ubuntu/Debian
++----------------------------------------------------------------------
+| Copyright © 2015-2099 BT-SOFT(http://www.aapanel.com) All rights reserved.
++----------------------------------------------------------------------
+| The WebPanel URL will be http://SERVER_IP:$panelPort when installed.
++----------------------------------------------------------------------
+"
+
+while [ "$go" != 'y' ] && [ "$go" != 'n' ]; do
+    read -p "Do you want to install aaPanel to the $setup_path directory now?(y/n): " go
 done
-history -c
-sudo ufw allow 80/tcp
-sudo ufw allow 443/tcp
-sudo ufw allow 80
-sudo ufw allow 443
+
+if [ "$go" == 'n' ]; then
+    exit
+fi
+
+Install_Main
+intenal_ip=$(ip addr | grep -E -o '[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}' | grep -E -v "^127\.|^255\.|^0\." | head -n 1)
+echo -e "=================================================================="
+echo -e "\033[32mCongratulations! Installed successfully!\033[0m"
+echo -e "=================================================================="
+if [ "$SET_SSL" == true ]; then
+    echo "aaPanel Internet Address: https://${getIpAddress}:${panelPort}$auth_path"
+    echo "aaPanel Internal Address: https://${intenal_ip}:${panelPort}$auth_path"
+else
+    echo "aaPanel Internet Address: http://${getIpAddress}:${panelPort}$auth_path"
+    echo "aaPanel Internal Address: http://${intenal_ip}:${panelPort}$auth_path"
+fi
+echo -e "username: $username"
+echo -e "password: $password"
+echo -e "\033[33mWarning:\033[0m"
+echo -e "\033[33mIf you cannot access the panel, \033[0m"
+echo -e "\033[33mrelease the following port ($panelPort|888|80|443|20|21) in the security group\033[0m"
+echo -e "=================================================================="
+
+endTime=$(date +%s)
+((outTime = ($endTime - $startTime) / 60))
+echo -e "Time consumed:\033[32m $outTime \033[0mMinute!"
+rm -f install.sh
