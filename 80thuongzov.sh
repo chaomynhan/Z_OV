@@ -44,7 +44,7 @@ Nodes:
   -
     PanelType: "V2board" # Panel type: SSpanel, V2board, PMpanel, Proxypanel
     ApiConfig:
-      ApiHost: "$doamin"
+      ApiHost: "$domain"
       ApiKey: "$APIKEY"
       NodeID: $node_80
       NodeType: V2ray # Node type: V2ray, Trojan, Shadowsocks, Shadowsocks-Plugin
