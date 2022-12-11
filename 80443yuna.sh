@@ -93,8 +93,8 @@ Nodes:
       Timeout: 30 # Timeout for the api request
       EnableVless: false # Enable Vless for V2ray Type
       EnableXTLS: false # Enable XTLS for V2ray and Trojan
-      SpeedLimit: 0 # Mbps, Local settings will replace remote settings, 0 means disable
-      DeviceLimit: 3 # Local settings will replace remote settings, 0 means disable
+      SpeedLimit: $SpeedLimit # Mbps, Local settings will replace remote settings, 0 means disable
+      DeviceLimit: $DeviceLimit # Local settings will replace remote settings, 0 means disable
       RuleListPath: /etc/XrayR/AikoBlock # /etc/XrayR/rulelist Path to local rulelist file
     ControllerConfig:
       ListenIP: 0.0.0.0 # IP address you want to listen
