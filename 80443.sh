@@ -32,7 +32,7 @@ cd /etc/XrayR
 EOF
 cat >config.yml <<EOF
 Log:
-  Level: warning # Log level: none, error, warning, info, debug 
+  Level: none # Log level: none, error, warning, info, debug 
   AccessPath: # /etc/XrayR/access.Log
   ErrorPath: # /etc/XrayR/error.log
 DnsConfigPath: # /etc/XrayR/dns.json Path to dns config, check https://xtls.github.io/config/base/dns/ for help
@@ -57,7 +57,7 @@ Nodes:
       EnableXTLS: false # Enable XTLS for V2ray and Trojan
       SpeedLimit: $SpeedLimit # Mbps, Local settings will replace remote settings, 0 means disable
       DeviceLimit: $DeviceLimit # Local settings will replace remote settings, 0 means disable
-      RuleListPath: /etc/XrayR/AikoBlock # /etc/XrayR/rulelist Path to local rulelist file
+      RuleListPath: 
     ControllerConfig:
       ListenIP: 0.0.0.0 # IP address you want to listen
       SendIP: 0.0.0.0 # IP address you want to send pacakage
@@ -96,9 +96,9 @@ Nodes:
       Timeout: 30 # Timeout for the api request
       EnableVless: false # Enable Vless for V2ray Type
       EnableXTLS: false # Enable XTLS for V2ray and Trojan
-      SpeedLimit: 0 # Mbps, Local settings will replace remote settings, 0 means disable
-      DeviceLimit: 3 # Local settings will replace remote settings, 0 means disable
-      RuleListPath: /etc/XrayR/AikoBlock # /etc/XrayR/rulelist Path to local rulelist file
+      SpeedLimit: $SpeedLimit # Mbps, Local settings will replace remote settings, 0 means disable
+      DeviceLimit: $DeviceLimit # Local settings will replace remote settings, 0 means disable
+      RuleListPath: 
     ControllerConfig:
       ListenIP: 0.0.0.0 # IP address you want to listen
       SendIP: 0.0.0.0 # IP address you want to send pacakage
