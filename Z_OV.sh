@@ -333,7 +333,7 @@ Install_xrayr() {
 # Initialization step
 clear
 while true; do
-  echo "Vui lòng nhập một số để Thực Hiện Câu Lệnh:"
+  echo "Vui lòng nhập 1 để cài đặt đầu tiên hoặc một số bên dưới để Thực Hiện Câu Lệnh:"
   for ((i = 1; i <= ${#operation[@]}; i++)); do
     hint="${operation[$i - 1]}"
     echo -e "${green}${i}${plain}) ${hint}"
