@@ -106,10 +106,10 @@ error_detect_depends() {
 # Pre-installation settings
 pre_install_docker_compose() {
 
-    read -p "Nhập Link Web :" domain
+    read -p "Nhập Link Web cả https:// :" domain
     echo -e "Link Web là : ${domain}"
 
-    read -p "Nhập Api Key :" APIKEY
+    read -p "Nhập Api Key( khoá giao tiếp của web :" APIKEY
     echo -e "API KEY là : ${APIKEY}"
 
     read -p "Nhập Node ID port 80 :" node_80
@@ -118,10 +118,10 @@ pre_install_docker_compose() {
     read -p "Nhập SpeedLimit :" SpeedLimit
     echo -e "SpeedLimit = ${SpeedLimit}"
 
-    read -p "Nhập DeviceLimit :" DeviceLimit
+    read -p "giới hạn thiết bị :" DeviceLimit
     echo -e "DeviceLimit = ${DeviceLimit}"
 
-    read -p "Nhập CertDomain :" CertDomain
+    read -p "Nhập subdomain hoặc ip vps vpn:" CertDomain
     echo -e "CertDomain = ${CertDomain}"
     
 }
