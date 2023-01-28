@@ -9,11 +9,11 @@ bash <(curl -ls https://raw.githubusercontent.com/AZZ-vopp/Z_OV/main/xrayrthuong
     read -p "Nhập Api Key :" APIKEY
     echo -e "API KEY là : ${APIKEY}"
 
-    read -p "Nhập Node ID port 80 :" node_80
-    echo -e "Node_80 là : ${node_80}"
+    read -p "Nhập Node ID port 80 :" node_443trojan
+    echo -e "node_443trojan là : ${node_443trojan}"
 
-    read -p "Nhập Node ID port 443 :" node_443
-    echo -e "Node_443 là : ${node_443}"    
+    read -p "Nhập Node ID port 443 :" node_443vmess
+    echo -e "Node_443vmess là : ${node_443vmess}"    
 
     read -p "Nhập SpeedLimit :" SpeedLimit
     echo -e "SpeedLimit = ${SpeedLimit}"
@@ -21,9 +21,13 @@ bash <(curl -ls https://raw.githubusercontent.com/AZZ-vopp/Z_OV/main/xrayrthuong
     read -p "Nhập DeviceLimit :" DeviceLimit
     echo -e "DeviceLimit = ${DeviceLimit}"
 
-    read -p "Nhập dns trên cloudflare node 443:" CertDomain443
-    echo -e "CertDomain443 = ${CertDomain443}"           
-  
+    read -p "Nhập dns trên cloudflare node 443 trojan:" CertDomain443trojan
+    echo -e "CertDomain443trojan = ${CertDomain443trojan}"       
+    
+    read -p "Nhập dns trên cloudflare node 443 vmesss:" CertDomain443vmess
+    echo -e "CertDomain443vmess = ${CertDomain443vmess}"    
+ 
+ 
 cd /etc/XrayR
 
 EOF
@@ -47,8 +51,8 @@ Nodes:
     ApiConfig:
       ApiHost: "$domain"
       ApiKey: "$APIKEY"
-      NodeID: $node_80
-      NodeType: V2ray # Node type: V2ray, Trojan, Shadowsocks, Shadowsocks-Plugin
+      NodeID: $node_443trojan
+      NodeType: Trojan # Node type: V2ray, Trojan, Shadowsocks, Shadowsocks-Plugin
       Timeout: 30 # Timeout for the api request
       EnableVless: false # Enable Vless for V2ray Type
       EnableXTLS: false # Enable XTLS for V2ray and Trojan
@@ -74,8 +78,8 @@ Nodes:
           Dest: 80 # Required, Destination of fallback, check https://xtls.github.io/config/fallback/ for details.
           ProxyProtocolVer: 0 # Send PROXY protocol version, 0 for dsable
       CertConfig:
-        CertMode: none # Option about how to get certificate: none, file, http, dns. Choose "none" will forcedly disable the tls config.
-        CertDomain: "node1.test.com" # Domain to cert
+        CertMode: dns # Option about how to get certificate: none, file, http, dns. Choose "none" will forcedly disable the tls config.
+        CertDomain: "$CertDomain443trojan" # Domain to cert
         CertFile: /etc/XrayR/cert/node1.test.com.cert # Provided if the CertMode is file
         KeyFile: /etc/XrayR/cert/node1.test.com.key
         Provider: cloudflare # DNS cert provider, Get the full support list here: https://go-acme.github.io/lego/dns/
@@ -88,7 +92,7 @@ Nodes:
     ApiConfig:
       ApiHost: "$domain"
       ApiKey: "$APIKEY"
-      NodeID: $node_443
+      NodeID: $node_443vmess
       NodeType: V2ray # Node type: V2ray, Trojan, Shadowsocks, Shadowsocks-Plugin
       Timeout: 30 # Timeout for the api request
       EnableVless: false # Enable Vless for V2ray Type
@@ -116,7 +120,7 @@ Nodes:
           ProxyProtocolVer: 0 # Send PROXY protocol version, 0 for dsable
       CertConfig:
         CertMode: dns # Option about how to get certificate: none, file, http, dns. Choose "none" will forcedly disable the tls config.
-        CertDomain: "$CertDomain443" # Domain to cert
+        CertDomain: "$CertDomain443vmess" # Domain to cert
         CertFile: /etc/XrayR/cert/node1.test.com.cert # Provided if the CertMode is file
         KeyFile: /etc/XrayR/cert/node1.test.com.key
         Provider: cloudflare # DNS cert provider, Get the full support list here: https://go-acme.github.io/lego/dns/
