@@ -80,8 +80,8 @@ Nodes:
         Provider: cloudflare # DNS cert provider, Get the full support list here: https://go-acme.github.io/lego/dns/
         Email: test@me.com
         DNSEnv: # DNS ENV option used by DNS provider
-          CLOUDFLARE_EMAIL: baba99290@gmail.com
-          CLOUDFLARE_API_KEY: 279d6ac459f58844da1db5e69689128e0b984
+          CLOUDFLARE_EMAIL: avv
+          CLOUDFLARE_API_KEY: avv
 EOF
 cd /root
 xrayr restart
