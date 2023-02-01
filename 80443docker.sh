@@ -119,8 +119,8 @@ pre_install_docker_compose() {
     echo -e "CertDomain80 = ${CertDomain80}"
 
 
-    read -p "Nhập Node ID port 443 :" node_443
-    echo -e "Node_443 là : ${node_443}"
+    read -p "Nhập Node ID port 443 trojan :" node_443
+    echo -e "Node_443 trojan là : ${node_443}"
 
 
     read -p "Nhập subdomain hoặc ip vps vpn node 443:" CertDomain443
