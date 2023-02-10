@@ -1,3 +1,9 @@
+mkdir /root/ssl
+cd ssl
+touch crt.crt
+touch key.key
+cd 
+openssl req -newkey rsa:2048 -x509 -sha256 -days 365 -nodes -out /root/ssl/crt.crt -keyout /root/ssl/key.key -subj "/C=JP/ST=Tokyo/L=Chiyoda-ku/O=Google Trust Services LLC/CN=google.com"
 #!/usr/bin/env bash
 PATH=/bin:/sbin:/usr/bin:/usr/sbin:/usr/local/bin:/usr/local/sbin:~/bin
 export PATH
@@ -105,14 +111,34 @@ error_detect_depends() {
 
 # Pre-installation settings
 pre_install_docker_compose() {
-  read -p " ID nút (Node_ID):" node_id
-  [ -z "${node_id}" ] && node_id=0
+  
+#Node_ID
+  read -p " ID nút 80 (Node_ID):" node_id80
   echo "-------------------------------"
-  echo "Node_ID: ${node_id}"
+  echo -e "Node_ID 80: ${node_id80}"
   echo "-------------------------------"
-}
+  
+  read -p " ID nút 443 (Node_ID):" node_id443
+  echo "-------------------------------"
+  echo -e "Node_ID 443: ${node_id443}"
+  echo "-------------------------------"
+  
+  
+
+read -p "Nhập Domain 80 (*.xn--thi-zov-iwa.vn):" CertDomain80
+  [ -z "${CertDomain80}" ] && CertDomain80=".xn--thi-zov-iwa"
+  echo "-------------------------------"
+  echo -e "Domain 80 là: ${CertDomain80}.xn--thi-zov-iwa.vn"
+  echo "
+
+read -p "Nhập Domain 443 (*.xn--thi-zov-iwa.vn):" CertDomain443
+  [ -z "${CertDomain443}" ] && CertDomain443=".xn--thi-zov-iwa"
+  echo "-------------------------------"
+  echo -e "Domain 443 là: ${CertDomain443}.xn--thi-zov-iwa.vn"
+  echo "-------------------------------"
  
 
+}
 
 # Config docker
 config_docker() {
@@ -124,21 +150,13 @@ config_docker() {
 version: '3'
 services: 
   xrayr: 
-    image: aikocute/xrayr:latest
+    image: ghcr.io/xrayr-project/xrayr:latest
     volumes:
-      - ./aiko.yml:/etc/XrayR/aiko.yml # thư mục cấu hình bản đồ
+      - ./config.yml:/etc/XrayR/config.yml # thư mục cấu hình bản đồ
       - ./dns.json:/etc/XrayR/dns.json 
-      - ./AikoBlock:/etc/XrayR/AikoBlock # thư mục cấu hình bản đồ
     restart: always
     network_mode: host
 EOF
-
-cat >AikoBlock <<EOF
-.*whatismyip.*
-(.*.||)(ipaddress|whatismyipaddress|whoer|iplocation|whatismyip|checkip|ipaddress|showmyip).(org|com|net|my|to|co|vn|my)
-(.*\.||)(speed|speedtest|fast|speed.cloudflare|speedtest.xfinity|speedtestcustom|speedof|testmy|i-speed|speedtest.vnpt|nperf|speedtest.telstra|i-speed|merter|speed|speedcheck)\.(com|cn|net|co|xyz|dev|edu|pro|vn|me|io|org)
-EOF
-
   cat >dns.json <<EOF
 {
     "servers": [
@@ -149,7 +167,7 @@ EOF
     "tag": "dns_inbound"
 }
 EOF
-  cat >aiko.yml <<EOF
+  cat >config.yml <<EOF
 Log:
   Level: none # Log level: none, error, warning, info, debug 
   AccessPath: # /etc/XrayR/access.Log
@@ -167,16 +185,16 @@ Nodes:
   -
     PanelType: "V2board" # Panel type: SSpanel, V2board, PMpanel, Proxypanel
     ApiConfig:
-      ApiHost: "https://zingfast.io/"
-      ApiKey: "tuyetngakmazazfcfvandoan"
-      NodeID: 1
+      ApiHost: "https://xn--thi-zov-iwa.vn"
+      ApiKey: "1122334455667788"
+      NodeID: ${node_id80}
       NodeType: V2ray # Node type: V2ray, Trojan, Shadowsocks, Shadowsocks-Plugin
       Timeout: 30 # Timeout for the api request
       EnableVless: false # Enable Vless for V2ray Type
       EnableXTLS: false # Enable XTLS for V2ray and Trojan
       SpeedLimit: 0 # Mbps, Local settings will replace remote settings, 0 means disable
-      DeviceLimit: 3 # Local settings will replace remote settings, 0 means disable
-      RuleListPath: /etc/XrayR/AikoBlock # /etc/XrayR/rulelist Path to local rulelist file
+      DeviceLimit: 0 # Local settings will replace remote settings, 0 means disable
+      RuleListPath: 
     ControllerConfig:
       ListenIP: 0.0.0.0 # IP address you want to listen
       SendIP: 0.0.0.0 # IP address you want to send pacakage
@@ -196,17 +214,57 @@ Nodes:
           Dest: 80 # Required, Destination of fallback, check https://xtls.github.io/config/fallback/ for details.
           ProxyProtocolVer: 0 # Send PROXY protocol version, 0 for dsable
       CertConfig:
-        CertMode: dns # Option about how to get certificate: none, file, http, dns. Choose "none" will forcedly disable the tls config.
-        CertDomain: "node1.test.com" # Domain to cert
-        CertFile: /etc/XrayR/cert/node1.test.com.cert # Provided if the CertMode is file
-        KeyFile: /etc/XrayR/cert/node1.test.com.key
+        CertMode: file # Option about how to get certificate: none, file, http, dns. Choose "none" will forcedly disable the tls config.
+        CertDomain: "${CertDomain80}.xn--thi-zov-iwa.vn" # Domain to cert
+        CertFile: /root/ssl/crt.crt
+        KeyFile: /root/ssl/key.key
         Provider: alidns # DNS cert provider, Get the full support list here: https://go-acme.github.io/lego/dns/
         Email: test@me.com
         DNSEnv: # DNS ENV option used by DNS provider
-          CLOUDFLARE_EMAIL: zingfast@yhaoo.com
-          CLOUDFLARE_API_KEY: 4d2c4513f66c7a40e3d251613532a2b1d903b  
+          ALICLOUD_ACCESS_KEY: aaa
+          ALICLOUD_SECRET_KEY: bbb
+  -
+    PanelType: "V2board" # Panel type: SSpanel, V2board, PMpanel, Proxypanel
+    ApiConfig:
+      ApiHost: "https://xn--thi-zov-iwa.vn"
+      ApiKey: "1122334455667788"
+      NodeID: ${node_id443}
+      NodeType: V2ray # Node type: V2ray, Trojan, Shadowsocks, Shadowsocks-Plugin
+      Timeout: 30 # Timeout for the api request
+      EnableVless: false # Enable Vless for V2ray Type
+      EnableXTLS: false # Enable XTLS for V2ray and Trojan
+      SpeedLimit: 0 # Mbps, Local settings will replace remote settings, 0 means disable
+      DeviceLimit: 0 # Local settings will replace remote settings, 0 means disable
+      RuleListPath: # /etc/XrayR/rulelist Path to local rulelist file
+    ControllerConfig:
+      ListenIP: 0.0.0.0 # IP address you want to listen
+      SendIP: 0.0.0.0 # IP address you want to send pacakage
+      UpdatePeriodic: 60 # Time to update the nodeinfo, how many sec.
+      EnableDNS: false # Use custom DNS config, Please ensure that you set the dns.json well
+      DNSType: AsIs # AsIs, UseIP, UseIPv4, UseIPv6, DNS strategy
+      DisableUploadTraffic: false # Disable Upload Traffic to the panel
+      DisableGetRule: false # Disable Get Rule from the panel
+      DisableIVCheck: false # Disable the anti-reply protection for Shadowsocks
+      DisableSniffing: true # Disable domain sniffing 
+      EnableProxyProtocol: false # Only works for WebSocket and TCP
+      EnableFallback: false # Only support for Trojan and Vless
+      FallBackConfigs:  # Support multiple fallbacks
+        -
+          SNI: # TLS SNI(Server Name Indication), Empty for any
+          Path: # HTTP PATH, Empty for any
+          Dest: 80 # Required, Destination of fallback, check https://xtls.github.io/config/fallback/ for details.
+          ProxyProtocolVer: 0 # Send PROXY protocol version, 0 for dsable
+      CertConfig:
+        CertMode: file # Option about how to get certificate: none, file, http, dns. Choose "none" will forcedly disable the tls config.
+        CertDomain: "${CertDomain443}.xn--thi-zov-iwa.vn" # Domain to cert
+        CertFile: /root/ssl/crt.crt
+        KeyFile: /root/ssl/key.key
+        Provider: cloudflare # DNS cert provider, Get the full support list here: https://go-acme.github.io/lego/dns/
+        Email: test@me.com
+        DNSEnv: # DNS ENV option used by DNS provider
+          CLOUDFLARE_EMAIL: bbb
+          CLOUDFLARE_API_KEY: aaa
 EOF
-  sed -i "s|NodeID:.*|NodeID: ${node_id}|" ./aiko.yml
 }
 
 # Install docker and docker compose
@@ -278,8 +336,8 @@ install_dependencies() {
       error_detect_depends "apt-get -y install ${depend}"
     done
   fi
-  echo -e "[${green}Info${plain}] Đặt múi giờ thành Hồ Chí Minh GTM+7"
-  ln -sf /usr/share/zoneinfo/Asia/Ho_Chi_Minh  /etc/localtime
+  echo -e "[${green}Info${plain}] Đặt múi giờ thành phố Hà Nội GTM+7"
+  ln -sf /usr/share/zoneinfo/Asia/Hanoi  /etc/localtime
   date -s "$(curl -sI g.cn | grep Date | cut -d' ' -f3-6)Z"
 
 }
@@ -287,7 +345,7 @@ install_dependencies() {
 #update_image
 Update_xrayr() {
   cd ${cur_dir}
-  echo "Tải hình ảnh DOCKER"
+  echo "Tải Plugin DOCKER"
   docker-compose pull
   echo "Bắt đầu chạy dịch vụ DOCKER"
   docker-compose up -d
@@ -296,7 +354,7 @@ Update_xrayr() {
 #show last 100 line log
 
 logs_xrayr() {
-  echo "100 dòng nhật ký chạy sẽ được hiển thị"
+  echo "nhật ký chạy sẽ được hiển thị"
   docker-compose logs --tail 100
 }
 
@@ -354,3 +412,4 @@ while true; do
     ;;
   esac
 done
+
