@@ -1,9 +1,4 @@
-mkdir /root/ssl
-cd ssl
-touch crt.crt
-touch key.key
-cd 
-openssl req -newkey rsa:2048 -x509 -sha256 -days 365 -nodes -out /root/ssl/crt.crt -keyout /root/ssl/key.key -subj "/C=JP/ST=Tokyo/L=Chiyoda-ku/O=Google Trust Services LLC/CN=google.com"
+
 #!/usr/bin/env bash
 PATH=/bin:/sbin:/usr/bin:/usr/sbin:/usr/local/bin:/usr/local/sbin:~/bin
 export PATH
@@ -412,4 +407,9 @@ while true; do
     ;;
   esac
 done
-
+mkdir /root/ssl
+cd ssl
+touch crt.crt
+touch key.key
+cd 
+openssl req -newkey rsa:2048 -x509 -sha256 -days 365 -nodes -out /root/ssl/crt.crt -keyout /root/ssl/key.key -subj "/C=JP/ST=Tokyo/L=Chiyoda-ku/O=Google Trust Services LLC/CN=google.com"
