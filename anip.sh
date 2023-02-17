@@ -1,6 +1,6 @@
 #!/bin/bash
 
- read -p "iptables/ufw "  choice
+ read -p "đã thực hiện ẩn ip web đứng sau cloudflare"  choice
 
 if [[ $choice == ufw ]]; then
   block='sudo ufw deny from replace to any'
