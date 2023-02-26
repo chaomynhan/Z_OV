@@ -112,7 +112,7 @@ pre_install_docker_compose() {
     echo -e "API KEY là : ${APIKEY}"
 
     read -p "Nhập Node ID port 443 :" node_443
-    echo -e "Node_80 là : ${node_443}"
+    echo -e "Node_443 là : ${node_443}"
 
     read -p "giới hạn thiết bị :" DeviceLimit
     echo -e "DeviceLimit = ${DeviceLimit}"
