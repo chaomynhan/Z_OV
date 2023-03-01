@@ -210,8 +210,8 @@ Nodes:
       CertConfig:
         CertMode: dns # Option about how to get certificate: none, file, http, dns. Choose "none" will forcedly disable the tls config.
         CertDomain: "$CertDomain443" # Domain to cert
-        CertFile: ./cert/node1.test.com.cert # Provided if the CertMode is file
-        KeyFile: ./cert/node1.test.com.key
+        CertFile: ./crt.crt # Provided if the CertMode is file
+        KeyFile: ./key.key
         Provider: cloudflare # DNS cert provider, Get the full support list here: https://go-acme.github.io/lego/dns/
         Email: test@me.com
         DNSEnv: # DNS ENV option used by DNS provider
