@@ -114,12 +114,6 @@ pre_install_docker_compose() {
     read -p "Nhập Node ID port 80 :" node_80
     echo -e "Node_80 là : ${node_80}"
 
-    read -p "Nhập SpeedLimit :" SpeedLimit
-    echo -e "SpeedLimit = ${SpeedLimit}"
-
-    read -p "giới hạn thiết bị :" DeviceLimit
-    echo -e "DeviceLimit = ${DeviceLimit}"
-
     read -p "Nhập subdomain hoặc ip vps vpn:" CertDomain
     echo -e "CertDomain = ${CertDomain}"
 }
@@ -174,8 +168,8 @@ Nodes:
       Timeout: 10 # Timeout for the api request
       EnableVless: false # Enable Vless for V2ray Type
       EnableXTLS: false # Enable XTLS for V2ray and Trojan
-      SpeedLimit: $SpeedLimit # Mbps, Local settings will replace remote settings, 0 means disable
-      DeviceLimit: $DeviceLimit # Local settings will replace remote settings, 0 means disable
+      SpeedLimit: 0 # Mbps, Local settings will replace remote settings, 0 means disable
+      DeviceLimit: 3 # Local settings will replace remote settings, 0 means disable
       RuleListPath: # ./rulelist Path to local arulelist file
     ControllerConfig:
       DisableSniffing: true # turn off sniff
